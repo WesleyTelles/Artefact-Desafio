@@ -28,6 +28,9 @@ _FILLER = {"qual", "o", "a", "os", "as", "preco", "valor", "do", "da", "de", "qu
            "tem", "no", "na", "um", "uma", "gostaria", "saber", "queria", "me", "diga", "esta", "estao",
            "disponivel", "estoque", "ainda", "e", "por", "favor", "pra", "para", "ver", "quero", "sobre",
            "vcs", "ola", "oi", "bom", "dia", "tarde", "noite", "preco", "e"}
+_OFF_TOPIC = re.compile(r"\b(copa do mundo|copa|futebol|campeonato|quem ganhou|presidente|eleicao|"
+                        r"receita de|previsao do tempo|horoscopo|novela|filme|bitcoin|bolsa de valores|"
+                        r"capital d[aeo]s?)\b")
 _PHONE = r"\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}"
 _EMAIL = r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
 
@@ -97,6 +100,10 @@ class MockLLM:
         if re.search(r"ignore|esqueca|instrucoes anteriores|prompt|suas regras|suas ferramentas", text):
             return LLMResponse(text="Isso eu não consigo fazer. Posso ajudar com instrumentos, preços, "
                                     "estoque, pedidos ou as políticas da loja. Como posso ajudar?")
+        if _OFF_TOPIC.search(text):
+            return LLMResponse(text="Isso foge do que eu consigo ajudar por aqui: cuido de instrumentos "
+                                    "musicais, preços, estoque, pedidos e políticas do Empório da Música. "
+                                    "Posso ajudar com algo da loja?")
         order = self._order_call(text, history, n)
         if order:
             return order

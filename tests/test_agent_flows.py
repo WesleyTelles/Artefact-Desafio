@@ -98,3 +98,12 @@ def test_horario_e_contato_usam_dados_da_loja(agent):
     assert names(horario) == ["get_store_info"] and "09:00 às 18:00" in horario.text
     contato = agent.reply("Qual o telefone de vocês?")
     assert "3341-4444" in contato.text and "3321-4500" in contato.text and "confirmar" in contato.text
+
+
+def test_mock_fora_do_escopo_recusa_e_nao_chama_ferramenta(agent):
+    for pergunta in ("Quem ganhou a Copa do Mundo de 2002?", "Qual a receita de bolo de cenoura?"):
+        reply = agent.reply(pergunta)
+        assert reply.trace == []
+        assert "Não encontrei esse produto" not in reply.text
+        assert "instrumentos" in reply.text and "loja" in reply.text.lower()
+
