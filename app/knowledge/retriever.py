@@ -248,9 +248,11 @@ def search_store_policies(query: str, retriever: Retriever | None = None) -> dic
         if best < MIN_SCORE or coverage < MIN_COVERAGE:
             return _envelope("not_found", query, [], [_NO_MATCH_NOTE, *notes], "handoff_to_human")
         picked = [(s, c) for s, _, c in ranked[:MAX_RESULTS] if s >= max(MIN_SCORE, best * RELATIVE_CUTOFF)]
-        issues = dict.fromkeys(i for _, c in picked for i in c.open_issues)
+        # avisos do trecho principal; divergências que exigem humano valem para qualquer trecho
+        issues = dict.fromkeys(
+            i for rank, (_, c) in enumerate(picked) for i in c.open_issues if rank == 0 or i in _ESCALATE)
         notes += [_ISSUE_NOTES[i] for i in issues if i in _ISSUE_NOTES and i != "I-10"]
-        if any(c.audience == INTERNAL for _, c in picked):
+        if picked[0][1].audience == INTERNAL:
             notes.append(_ISSUE_NOTES["I-10"])
         status, action = "found", "answer_from_manual"
         if best < STRONG_SCORE and coverage < FULL_COVERAGE:
