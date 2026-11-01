@@ -154,11 +154,15 @@ class Agent:
 
     @staticmethod
     def _assistant_message(resp: LLMResponse) -> dict:
-        return {"role": "assistant", "content": resp.text or "",
-                "tool_calls": [{"id": c.id, "type": "function",
-                                "function": {"name": c.name,
-                                             "arguments": json.dumps(c.arguments, ensure_ascii=False)}}
-                               for c in resp.tool_calls]}
+        calls = []
+        for c in resp.tool_calls:
+            item = {"id": c.id, "type": "function",
+                    "function": {"name": c.name,
+                                 "arguments": json.dumps(c.arguments, ensure_ascii=False)}}
+            if c.extra:
+                item["extra_content"] = c.extra
+            calls.append(item)
+        return {"role": "assistant", "content": resp.text or "", "tool_calls": calls}
 
     def _finish(self, text: str | None, trace: list[dict], tech_failures: int, successes: int,
                 system: str) -> AgentReply:

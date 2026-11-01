@@ -106,6 +106,7 @@ class OpenAICompatClient:
             raise LLMError("bad_response", "Resposta do provedor sem conteúdo")
         msg = choices[0].message
         calls = [ToolCall(id=tc.id or f"call_{i}", name=tc.function.name,
-                          arguments=_parse_arguments(tc.function.arguments))
+                          arguments=_parse_arguments(tc.function.arguments),
+                          extra=getattr(tc, "extra_content", None) or (getattr(tc, "model_extra", None) or {}).get("extra_content"))
                  for i, tc in enumerate(getattr(msg, "tool_calls", None) or [])]
         return LLMResponse(text=(msg.content or None), tool_calls=calls)

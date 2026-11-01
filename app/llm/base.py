@@ -30,6 +30,8 @@ class ToolCall:
     id: str
     name: str
     arguments: dict
+    # Dados opacos do provedor que precisam voltar na próxima rodada (ex.: assinatura de raciocínio do Gemini 3).
+    extra: dict | None = None
 
 
 @dataclass
