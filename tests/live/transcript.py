@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 
 from app.agent.orchestrator import _EMAIL_RE, _PHONE_RE, _digits, _store_contacts
 from app.tools.orders import mask_email, mask_phone
@@ -23,6 +24,12 @@ def mask(text: str) -> str:
         return mask_phone(m.group(0)) if len(d) >= 10 else "****-" + d[-4:]
 
     return _PHONE_RE.sub(_phone, _EMAIL_RE.sub(_email, text))
+
+
+def visible(text: str) -> str:
+    """Troca caracteres de controle e invisíveis por escapes (\\uXXXX) para o Markdown ficar legível."""
+    return "".join(f"\\u{ord(c):04x}" if c != "\n" and unicodedata.category(c) in ("Cc", "Cf") else c
+                   for c in text)
 
 
 def summarize(name: str, result: dict) -> str:
@@ -55,7 +62,7 @@ def render(scenario: Scenario, run: Run, failures: list[str], verdict: str) -> s
     if failures:
         lines += ["- Falhas das asserções:"] + [f"  - {mask(f)}" for f in failures]
     for i, turn in enumerate(run.turns, 1):
-        question = mask(turn.question).replace("\n", " ")
+        question = visible(mask(turn.question)).replace("\n", " ")
         lines += ["", f"## Turno {i}", "", "**Cliente:**", "", "> " + question[:400]]
         if len(question) > 400:
             lines.append(f"> (mensagem com {len(turn.question)} caracteres, truncada aqui)")

@@ -57,3 +57,8 @@ def test_transcricoes_gravadas_nao_expõem_contato_de_clientes():
         for c in store.customers.values():
             assert c.email.lower() not in body, f"{path.name}: e-mail completo do cliente {c.customer_id}"
             assert "".join(ch for ch in c.phone if ch.isdigit())[-8:] not in body.replace("-", ""), path.name
+
+
+def test_transcricao_escapa_caracteres_invisiveis():
+    from tests.live.transcript import visible
+    assert visible("a\x00\u202eb\n") == "a\\u0000\\u202eb\n"
