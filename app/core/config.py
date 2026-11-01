@@ -32,6 +32,7 @@ PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
 MAX_TOOL_ITERATIONS = 6
 MEMORY_WINDOW = 20          # mensagens (usuário + resposta) mantidas por sessão
 MAX_INPUT_CHARS = 1000
+MAX_FAILED_VERIFICATIONS = 5  # tentativas de verificação de pedido erradas por sessão
 LLM_TIMEOUT_SECONDS = 30.0
 
 

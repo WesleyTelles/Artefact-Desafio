@@ -133,5 +133,5 @@ def known_prices() -> set[Decimal]:
 
 
 def unknown_prices(text: str) -> list[Decimal]:
-    known = known_prices()
+    known = known_prices() | {Decimal(1000)}  # teto citado nas perguntas dos cenários
     return [p for p in prices_in(text) if p not in known]

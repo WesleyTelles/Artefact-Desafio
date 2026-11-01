@@ -172,3 +172,22 @@ def test_verificacao_digitada_pelo_cliente_e_aceita_com_formatacao_diferente():
     assert A._verification_from_user({"verification": "67984321098"}, ["meu tel (67) 98432-1098"])
     assert not A._verification_from_user({"verification": "67984321098"}, ["oi"])
     assert not A._verification_from_user({"verification": ""}, ["oi"])
+
+
+def test_chute_de_verificacao_e_bloqueado_apos_tentativas_erradas():
+    from app.core.config import MAX_FAILED_VERIFICATIONS
+    agent = Agent(FakeLLM([]))
+    for i in range(MAX_FAILED_VERIFICATIONS):
+        email = f"chute{i}@exemplo.com"
+        agent.llm.steps = [tool_step("get_order_status", {"order_id": 2, "verification": email}),
+                           text_step("Não foi possível confirmar.")]
+        reply = agent.reply(f"pedido 2, e-mail {email}")
+        assert reply.trace[0]["status"] == "verification_failed"
+    # depois do limite, nem o e-mail correto (digitado) consulta o pedido
+    certo = "anacarol.ferreira@coldmail.com"
+    agent.llm.steps = [tool_step("get_order_status", {"order_id": 2, "verification": certo}),
+                       text_step("Procure a loja.")]
+    reply = agent.reply(f"pedido 2, e-mail {certo}")
+    assert reply.trace[0]["status"] == "locked"
+    tool_msgs = [m for m in agent.llm.seen[-1] if m["role"] == "tool"]
+    assert "Ana Carolina" not in str(tool_msgs)

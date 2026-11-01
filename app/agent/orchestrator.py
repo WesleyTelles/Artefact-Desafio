@@ -21,7 +21,7 @@ from typing import Any, Callable
 from app.agent.memory import SessionMemory
 from app.agent.prompts import (EMPTY_INPUT_MESSAGE, LEAK_MESSAGE, LIMIT_MESSAGE, UNAVAILABLE_MESSAGE,
                                build_system_prompt)
-from app.core.config import MAX_INPUT_CHARS, MAX_TOOL_ITERATIONS
+from app.core.config import MAX_FAILED_VERIFICATIONS, MAX_INPUT_CHARS, MAX_TOOL_ITERATIONS
 from app.llm.base import LLMClient, LLMError, LLMResponse
 from app.tools.orders import mask_email, mask_phone
 from app.tools.registry import execute, tool_specs
@@ -98,6 +98,7 @@ class Agent:
         self._execute = executor
         self._today = today
         self.max_iterations = max_iterations
+        self._failed_verifications = 0  # por sessão; /limpar não zera, para não contornar o limite
 
     # --- API pública -----------------------------------------------------------
     def reply(self, user_text: str) -> AgentReply:
@@ -178,7 +179,14 @@ class Agent:
         if name == "get_order_status" and not self._verification_from_user(args, user_texts):
             return {"status": "verification_required",
                     "message": "Informe o e-mail ou o telefone cadastrado no pedido."}
-        return self._execute(name, args if isinstance(args, dict) else None)
+        if name == "get_order_status" and self._failed_verifications >= MAX_FAILED_VERIFICATIONS:
+            return {"status": "locked",
+                    "message": "Muitas tentativas de verificação sem sucesso. Para consultar pedidos, "
+                               "fale com a loja pelos contatos oficiais."}
+        result = self._execute(name, args if isinstance(args, dict) else None)
+        if name == "get_order_status" and result.get("status") == "verification_failed":
+            self._failed_verifications += 1
+        return result
 
     @staticmethod
     def _verification_from_user(args: Any, user_texts: list[str]) -> bool:

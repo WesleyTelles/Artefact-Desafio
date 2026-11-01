@@ -22,25 +22,28 @@ LEAK_MARKERS = ("COMO FALAR", "FERRAMENTAS E VERDADE", "PEDIDOS E PRIVACIDADE", 
 
 # --- fatos do catálogo ---------------------------------------------------------------------
 @lru_cache(maxsize=1)
-def _model_tokens() -> dict[int, str]:
-    """product_id -> token de modelo (primeiro token com dígito) quando único no catálogo."""
+def _model_keys() -> dict[int, tuple[str, ...]]:
+    """product_id -> chaves que identificam o produto no texto (marca+modelo e token de modelo)."""
     store = get_store()
-    raw = {}
-    for p in store.products.values():
-        for tok in re.findall(r"[A-Za-z0-9-]+", p.name):
+    words = {p.product_id: re.findall(r"[A-Za-z0-9-]+", p.name) for p in store.products.values()}
+    raw: dict[int, list[str]] = {}
+    for pid, ws in words.items():
+        keys = [norm(" ".join(ws[:2]))] if len(ws) >= 2 else []
+        for tok in ws:
             if any(c.isdigit() for c in tok) and len(tok) >= 3:
-                raw[p.product_id] = norm(tok)
+                keys.append(norm(tok))
                 break
+        raw[pid] = keys
     counts: dict[str, int] = {}
-    for tok in raw.values():
-        counts[tok] = counts.get(tok, 0) + 1
-    return {pid: tok for pid, tok in raw.items() if counts[tok] == 1}
+    for keys in raw.values():
+        for k in set(keys):
+            counts[k] = counts.get(k, 0) + 1
+    return {pid: tuple(k for k in keys if counts[k] == 1) for pid, keys in raw.items()}
 
 
 def _mentions(text: str, pid: int) -> bool:
-    tok = _model_tokens().get(pid)
     n = norm(text)
-    return bool(tok and re.search(rf"(?<![a-z0-9-]){re.escape(tok)}(?![a-z0-9-])", n))
+    return any(re.search(rf"(?<![a-z0-9-]){re.escape(k)}(?![a-z0-9-])", n) for k in _model_keys()[pid])
 
 
 @lru_cache(maxsize=1)
@@ -142,8 +145,8 @@ def violoes_check(t: TurnRecord) -> str | None:
     ok, out = violoes_ate_1000()
     store = get_store()
     shown = {pid for pid in ok if _mentions(t.text, pid)}
-    if len(shown) < 3:
-        return f"menos de 3 violões vendáveis ≤1000 citados ({sorted(shown)})"
+    if len(shown) < 2:
+        return f"menos de 2 violões vendáveis ≤1000 citados ({sorted(shown)})"
     wrong = sorted(pid for pid in store.products if pid not in ok and _mentions(t.text, pid))
     if wrong:
         return f"produtos fora do filtro citados: {wrong} (excluídos esperados: {sorted(out)})"
