@@ -101,12 +101,12 @@ class MockLLM:
         if order:
             return order
         words = set(re.findall(r"[a-z]+", text))
-        if any(a in w for a in _ACCESSORY for w in words) and not re.search(r"\d\s*cordas", text):
+        if any(w.startswith(a) for a in _ACCESSORY for w in words) and not re.search(r"\d\s*cordas", text):
             return _call(n, "search_products", {"query": raw})
         if any(w in text for w in _POLICY_WORDS):
             return _call(n, "search_store_policies", {"query": raw})
         for key, topic in _STORE_TOPICS:
-            if re.search(r"" + key + r"", text):
+            if re.search(r"\b" + key, text):
                 return _call(n, "get_store_info", {"topic": topic})
         if "promo" in text or "desconto" in text or "oferta" in text:
             return _call(n, "get_promotions", {})
