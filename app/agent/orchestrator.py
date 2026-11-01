@@ -43,7 +43,9 @@ class AgentReply:
 
 
 def sanitize_input(text: str, limit: int = MAX_INPUT_CHARS) -> str:
-    cleaned = _CONTROL_RE.sub(" ", text or "")
+    # remove também caracteres de formatação invisíveis (bidi, largura zero), categoria Unicode Cf
+    cleaned = "".join(c for c in (text or "") if unicodedata.category(c) != "Cf")
+    cleaned = _CONTROL_RE.sub(" ", cleaned)
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
     return cleaned[:limit].strip()
 

@@ -191,3 +191,7 @@ def test_chute_de_verificacao_e_bloqueado_apos_tentativas_erradas():
     assert reply.trace[0]["status"] == "locked"
     tool_msgs = [m for m in agent.llm.seen[-1] if m["role"] == "tool"]
     assert "Ana Carolina" not in str(tool_msgs)
+
+
+def test_sanitize_input_remove_bidi_e_largura_zero():
+    assert sanitize_input("‮ pre​ço do⁦ Taka‍mine") == "preço do Takamine"
