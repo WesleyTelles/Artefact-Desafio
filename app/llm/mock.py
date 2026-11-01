@@ -206,6 +206,8 @@ class MockLLM:
         items = d.get("products") or d.get("candidates") or []
         if not items:
             return "Não encontrei opções com esses critérios."
+        if len(items) == 1 and status == "found":
+            return f"Encontrei: {self._line(items[0])}."
         head = "Encontrei mais de uma opção, qual delas você quer?" if status == "ambiguous" \
             else "Olha o que tenho:"
         shown = items[:6]
