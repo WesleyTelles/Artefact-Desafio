@@ -120,6 +120,8 @@ def _is_accessory_query(query: str) -> bool:
 def _matches_text(haystack: str, terms: list[str]) -> bool:
     words = haystack.split()
     joined = haystack.replace(" ", "")
+    if len("".join(terms)) >= 4 and "".join(terms) in joined:
+        return True  # "gd 20" casa com "GD20"
     for term in terms:
         in_words = any(w == term or (len(term) >= 3 and w.startswith(term)) for w in words)
         if not in_words and not (len(term) >= 3 and term in joined):

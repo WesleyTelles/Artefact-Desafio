@@ -23,7 +23,7 @@ def promotion_info(product: Product, promo: Promotion) -> dict:
     return {
         "promotion_id": promo.promotion_id,
         "description": promo.description,
-        "discount_percent": str(promo.discount_percent.normalize()),
+        "discount_percent": format(promo.discount_percent.normalize(), "f"),
         "original_price_brl": money_str(product.price_brl),
         "promotional_price_brl": money_str(final),
         "original_price_display": format_brl(product.price_brl),
