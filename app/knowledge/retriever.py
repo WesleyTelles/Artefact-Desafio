@@ -31,7 +31,7 @@ MAX_RESULTS = 3
 MAX_SNIPPET = 600
 MIN_SCORE = 3.0      # abaixo disso: not_found
 STRONG_SCORE = 7.0   # acima disso: found mesmo com cobertura parcial dos termos
-MIN_COVERAGE = 0.5   # abaixo disso: not_found (a consulta fala de outra coisa)
+MIN_COVERAGE = 0.5   # com score fraco, abaixo disso: not_found (a consulta fala de outra coisa)
 FULL_COVERAGE = 0.99  # com cobertura total, score entre MIN e STRONG ainda é found
 RELATIVE_CUTOFF = 0.45  # resultados abaixo de 45% do melhor são descartados
 K1, B = 1.5, 0.75
@@ -63,7 +63,7 @@ sempre aja responda como""".split())
 
 # Assuntos que o manual não regula (lacunas): aviso e encaminhamento.
 _GAPS = (
-    (frozenset({"cancel"}),
+    (("cancel",),
      "O manual não define regras de cancelamento de pedido nem de estorno de pedido cancelado; "
      "o §4.1 trata a devolução de produto já recebido."),
 )
@@ -162,12 +162,14 @@ class Retriever:
     def score(self, terms: list[str], all_terms: list[str]) -> list[tuple[float, float, Chunk]]:
         """(score, cobertura, trecho) em ordem decrescente de score.
 
-        Cobertura = fração do peso (idf) dos termos da consulta presentes no
-        manual que o trecho contém; termos que não existem em nenhum trecho
-        não entram na conta.
+        Cobertura = fração do peso (idf) dos termos da consulta que o trecho
+        contém; termo ausente do manual inteiro pesa como a média dos idf.
         """
-        known = {t for t in terms if t in self._idf}
-        known_mass = sum(self._idf[t] for t in known)
+        distinct = set(terms)
+        known = {t for t in distinct if t in self._idf}
+        unknown = len(distinct) - len(known)
+        mean_idf = sum(self._idf.values()) / len(self._idf)
+        known_mass = sum(self._idf[t] for t in known) + unknown * mean_idf
         scored = []
         for doc in self._docs:
             total = matched = 0.0
@@ -242,10 +244,10 @@ def search_store_policies(query: str, retriever: Retriever | None = None) -> dic
         all_terms = analyze(text)
         terms = _search_terms(text)
         ranked = (retriever or _default_retriever()).score(terms, all_terms)
-        gaps = [note for stems, note in _GAPS if stems & set(all_terms)]
+        gaps = [note for prefixes, note in _GAPS if any(t.startswith(prefixes) for t in all_terms)]
         notes += gaps
         best, coverage, _ = ranked[0]
-        if best < MIN_SCORE or coverage < MIN_COVERAGE:
+        if best < MIN_SCORE or (best < STRONG_SCORE and coverage < MIN_COVERAGE):
             return _envelope("not_found", query, [], [_NO_MATCH_NOTE, *notes], "handoff_to_human")
         picked = [(s, c) for s, _, c in ranked[:MAX_RESULTS] if s >= max(MIN_SCORE, best * RELATIVE_CUTOFF)]
         # avisos do trecho principal; divergências que exigem humano valem para qualquer trecho
