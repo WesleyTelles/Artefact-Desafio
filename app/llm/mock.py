@@ -19,7 +19,7 @@ _CATEGORIES = {"violao": "violão", "violoes": "violão", "guitarra": "guitarra"
                "ukuleles": "ukulele", "saxofone": "saxofone", "flauta": "flauta"}
 _ACCESSORY = ("corda", "palheta", "cabo", "capa", "case", "pedal", "pedais", "afinador", "amplificador",
               "suporte")
-_STORE_TOPICS = (("horario", "hours"), ("funciona", "hours"), ("abre", "hours"), ("endereco", "address"),
+_STORE_TOPICS = (("horario", "hours"), ("funcionamento", "hours"), ("que horas", "hours"), ("abre", "hours"), ("endereco", "address"),
                  ("onde fica", "address"), ("localizacao", "address"), ("telefone", "contacts"),
                  ("whatsapp", "contacts"), ("contato", "contacts"), ("email", "contacts"))
 _POLICY_WORDS = ("devol", "troca", "trocar", "arrepend", "garantia", "defeito", "politica", "pagamento",
@@ -103,8 +103,10 @@ class MockLLM:
         words = set(re.findall(r"[a-z]+", text))
         if any(a in w for a in _ACCESSORY for w in words) and not re.search(r"\d\s*cordas", text):
             return _call(n, "search_products", {"query": raw})
+        if any(w in text for w in _POLICY_WORDS):
+            return _call(n, "search_store_policies", {"query": raw})
         for key, topic in _STORE_TOPICS:
-            if key in text:
+            if re.search(r"" + key + r"", text):
                 return _call(n, "get_store_info", {"topic": topic})
         if "promo" in text or "desconto" in text or "oferta" in text:
             return _call(n, "get_promotions", {})
@@ -115,7 +117,7 @@ class MockLLM:
         received = re.search(r"(\d{4}-\d{2}-\d{2})", text)
         if received and ("receb" in text or "chegou" in text):
             return _call(n, "check_return_eligibility", {"received_date": received.group(1)})
-        if any(w in text for w in _POLICY_WORDS) or "parcel" in text or "frete" in text:
+        if "parcel" in text or "frete" in text:
             return _call(n, "search_store_policies", {"query": raw})
         product = self._product_call(text, history, n)
         if product:

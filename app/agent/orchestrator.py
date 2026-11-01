@@ -31,8 +31,7 @@ log = logging.getLogger(__name__)
 
 TECHNICAL_FAILURES = {"data_error", "internal_error"}
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-_PHONE_AREA_RE = re.compile(r"(?<![\w*.,/-])\(?\d{2}\)?[\s-]?9?\d{4}[-\s]?\d{4}(?![\w*])")
-_PHONE_LOCAL_RE = re.compile(r"(?<![\w*.,/-])9?\d{4}[-\s]\d{4}(?![\w*])")
+_PHONE_RE = re.compile(r"(?<![\w*.,/-])(?:\(?\d{2}\)?[\s-]?9?\d{4}[-\s]?\d{4}|9?\d{4}[-\s]\d{4})(?![\w*])")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
@@ -78,11 +77,12 @@ def sanitize_output(text: str, system_prompt: str = "") -> str:
         return m.group(0) if m.group(0).lower() in store_emails else mask_email(m.group(0))
 
     def _phone(m: re.Match) -> str:
-        return m.group(0) if _digits(m.group(0)) in store_phones else mask_phone(m.group(0))
+        digits = _digits(m.group(0))
+        if digits in store_phones:
+            return m.group(0)
+        return mask_phone(m.group(0)) if len(digits) >= 10 else "****-" + digits[-4:]
 
-    text = _EMAIL_RE.sub(_email, text)
-    text = _PHONE_AREA_RE.sub(_phone, text)
-    return _PHONE_LOCAL_RE.sub(lambda m: "****-" + _digits(m.group(0))[-4:], text)
+    return _PHONE_RE.sub(_phone, _EMAIL_RE.sub(_email, text))
 
 
 def _call_key(name: str, args: dict) -> str:
@@ -94,7 +94,7 @@ class Agent:
                  executor: Callable[..., dict] = execute, today: date | None = None,
                  max_iterations: int = MAX_TOOL_ITERATIONS) -> None:
         self.llm = llm
-        self.memory = memory or SessionMemory()
+        self.memory = memory if memory is not None else SessionMemory()
         self._execute = executor
         self._today = today
         self.max_iterations = max_iterations
