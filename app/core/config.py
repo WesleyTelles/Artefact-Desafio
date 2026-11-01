@@ -25,7 +25,7 @@ def csv_path(table: str, data_dir: Path | None = None) -> Path:
 # Segredos (LLM_API_KEY) só via ambiente/.env; nunca têm valor padrão.
 PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-               "model": "gemini-3.8-flash"},
+               "model": "gemini-3.5-flash-lite"},
     "groq": {"base_url": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-120b"},
     "ollama": {"base_url": "http://localhost:11434/v1", "model": "qwen3.8"},
 }
