@@ -168,7 +168,7 @@ Esses materiais são da Artefact (base fictícia do desafio e um manual marcado 
 `python main.py --mock` roda sem chave e sem LLM. **Não é o agente real:** é uma demonstração por intenções (sinônimos e regras, sem aprendizado), que emite chamadas reais às ferramentas e redige a resposta só a partir do que elas devolvem. Serve para ver o fluxo e as ferramentas offline e para os testes; não mede a qualidade de conversa do Gemini, e os números de qualidade deste README valem para o LLM real. Limitações conhecidas, do docstring de `app/llm/mock.py`:
 
 - Frases com sinônimos fora das listas ou muito indiretas caem em "pode reformular?" (por exemplo "quero algo grave pra tocar no coro da igreja").
-- Contexto básico: só reaproveita a categoria do histórico (para teto ou piso de preço) e o número do pedido ou e-mail já ditos. "E o preço dele?" ou "esse tem estoque?" não é resolvido.
+- Contexto básico: reaproveita a categoria do histórico (para teto ou piso de preço), o número do pedido ou e-mail já ditos e a última listagem exibida, só para "qual deles é o mais barato/mais caro?" (responde com os preços que a ferramenta já devolveu, sem nova consulta; some ao usar `/limpar`). "E o preço dele?" ou "esse tem estoque?" (um produto específico) não é resolvido. O Gemini real resolve essas referências sozinho; o mock não.
 - Em perguntas compostas, cada trecho vira no máximo uma ferramenta; "preço do X e do Y" num trecho só vira uma consulta única e pode voltar "não encontrei".
 - Política: usa o trecho inteiro como consulta e mostra o primeiro resultado do manual; não sintetiza nem compara seções.
 - Produto sem marca ou modelo reconhecível (por exemplo "aquele violão vermelho") vira listagem por categoria ou pedido de reformulação.
@@ -190,8 +190,11 @@ O cliente repete a chamada ao LLM só em falhas transitórias (429, 5xx, timeout
 | `auth` | HTTP 401/403 (chave recusada) | não |
 | `not_found` | HTTP 404 (modelo ou endereço) | não |
 | `bad_request` | outros 4xx | não |
-| `bad_response` | resposta vazia ou inesperada | não |
+| `bad_response` | resposta vazia (uma nova chamada só) ou estrutura inesperada (nenhuma) | só a vazia, 1 vez |
+| `budget` | orçamento de tempo do turno esgotado | não |
 | `config` | chave, modelo ou endereço ausentes | não |
+
+**Orçamento por turno.** Todo turno tem um prazo total (`TURN_TIMEOUT_SECONDS`, padrão 60 s, de 5 a 600). Cada chamada ao provedor recebe só o tempo que resta, e um retry cuja espera estouraria o prazo não acontece. Esgotado o prazo, o cliente recebe uma mensagem própria ("demorei mais do que o esperado...", com os contatos da loja) e o log registra `turn_timeout`. Como o prazo vale por turno, um turno com várias chamadas ao LLM divide o mesmo orçamento.
 
 O cliente sempre recebe a mesma resposta fixa de indisponibilidade, sem detalhe técnico, e nunca um texto inventado. Para o operador, erros de configuração (`auth`, `not_found`, `bad_request`, `config`) e de conexão imprimem no stderr uma dica, por exemplo `[operador] auth: verifique LLM_API_KEY e as permissões da chave`; com `--debug`, a categoria de qualquer falha aparece como `[operador] falha técnica: <categoria>`. Falha de ferramenta sem nenhum dado válido no turno também gera a resposta fixa, e o texto do LLM é descartado.
 
@@ -218,7 +221,7 @@ Para ler, uma linha por turno: `python -c "import json,sys; [print(json.loads(l)
 pytest
 ```
 
-Roda 445 testes sem rede nem chave (os 40 testes `live` ficam de fora de propósito). A suíte cobre carga e validação de dados, ferramentas, regras do manual, busca, orquestrador (guardrails, retry, JSON inválido, falha de ferramenta), CLI, telemetria, mock e a régua das asserções dos cenários reais (controle negativo: cada asserção reprova respostas erradas). Como boa parte depende dos dados, só passam todos com os arquivos de "Dados necessários" no lugar. Cenários com o LLM real (usam a cota da chave):
+Roda 477 testes sem rede nem chave (os 40 testes `live` ficam de fora de propósito). A suíte cobre carga e validação de dados, ferramentas, regras do manual, busca, orquestrador (guardrails, retry, JSON inválido, falha de ferramenta), CLI, telemetria, mock e a régua das asserções dos cenários reais (controle negativo: cada asserção reprova respostas erradas). Como boa parte depende dos dados, só passam todos com os arquivos de "Dados necessários" no lugar. Cenários com o LLM real (usam a cota da chave):
 
 ```bash
 pytest -m live

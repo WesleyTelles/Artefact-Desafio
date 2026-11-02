@@ -61,10 +61,13 @@ O cliente (`app/llm/openai_compat.py`) desliga o retry do SDK e aplica o própri
 | `auth` | HTTP 401/403 | não | sim, verificar `LLM_API_KEY` |
 | `not_found` | HTTP 404 | não | sim, verificar `LLM_MODEL`/`LLM_BASE_URL` |
 | `bad_request` | outros 4xx | não | sim, verificar `LLM_MODEL` e o formato |
-| `bad_response` | resposta sem conteúdo ou inesperada | não | não |
+| `bad_response` | resposta vazia (1 nova chamada) ou estrutura inesperada (sem retry) | só a vazia, 1 vez | não |
+| `budget` | orçamento de tempo do turno esgotado | não | não |
 | `config` | chave, modelo ou endereço ausentes | não | sim |
 
-Para o cliente, qualquer categoria vira a mesma resposta fixa de indisponibilidade, sem detalhe técnico. As mensagens de erro nunca levam chave nem corpo da resposta. Outras categorias do orquestrador, só no log: `tool_error`, `invalid_arguments`, `iteration_limit`, `empty_response`.
+**Orçamento por turno.** O orquestrador define um prazo total por turno (`TURN_TIMEOUT_SECONDS`, padrão 60 s) e passa o tempo restante a cada `chat(..., timeout=)`. O cliente limita o timeout de cada requisição ao que resta e não dorme num retry que estouraria o prazo (`LLMError("budget")`). O orquestrador também checa o prazo antes de cada chamada; ao esgotar, devolve `TIMEOUT_MESSAGE` (categoria `turn_timeout` no log). Ferramentas locais não consomem o orçamento de forma relevante e não são interrompidas.
+
+Para o cliente, qualquer outra categoria vira a mesma resposta fixa de indisponibilidade, sem detalhe técnico. As mensagens de erro nunca levam chave nem corpo da resposta. Outras categorias do orquestrador, só no log: `turn_timeout`, `tool_error`, `invalid_arguments`, `iteration_limit`, `empty_response`.
 
 Argumentos de ferramenta inválidos (JSON malformado, não objeto, tipo errado, campo ausente ou extra, ferramenta inexistente) nunca são executados: voltam ao modelo como erro estruturado com um resumo do schema. Há uma correção por ferramenta no turno (`MAX_ARG_CORRECTIONS`); persistindo, o turno termina com resposta fixa pedindo para reformular.
 
