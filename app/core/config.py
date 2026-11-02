@@ -34,6 +34,12 @@ MEMORY_WINDOW = 20          # mensagens (usuário + resposta) mantidas por sess�
 MAX_INPUT_CHARS = 1000
 MAX_FAILED_VERIFICATIONS = 5  # tentativas de verificação de pedido erradas por sessão
 LLM_TIMEOUT_SECONDS = 30.0
+LLM_MAX_ATTEMPTS = 3            # total de chamadas por pedido ao LLM (1 + 2 retries); env LLM_MAX_ATTEMPTS
+LLM_BACKOFF_BASE_SECONDS = 1.0  # espera = base * 2**(tentativa-1), com jitter, limitada pelo teto
+LLM_BACKOFF_MAX_SECONDS = 8.0
+LLM_RETRY_AFTER_CAP_SECONDS = 10.0  # teto para o cabeçalho Retry-After do provedor
+MAX_ARG_CORRECTIONS = 1       # correções de argumentos inválidos de ferramenta por turno
+LOG_FILE_ENV = "EMPORIO_LOG_FILE"  # caminho do log JSONL de telemetria; ausente = desligado
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,7 @@ class LLMSettings:
     model: str
     base_url: str
     api_key: str = field(default="", repr=False)  # nunca aparece em repr/logs
+    max_attempts: int = LLM_MAX_ATTEMPTS
 
 
 def load_env_file() -> None:
@@ -53,6 +60,13 @@ def load_env_file() -> None:
     load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
+def _max_attempts_from_env() -> int:
+    try:
+        return min(10, max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", LLM_MAX_ATTEMPTS))))
+    except ValueError:
+        return LLM_MAX_ATTEMPTS
+
+
 def load_llm_settings(provider: str | None = None) -> LLMSettings:
     """Lê LLM_PROVIDER, LLM_MODEL, LLM_BASE_URL e LLM_API_KEY do ambiente."""
     provider = (provider or os.environ.get("LLM_PROVIDER") or "gemini").strip().lower()
@@ -62,4 +76,5 @@ def load_llm_settings(provider: str | None = None) -> LLMSettings:
         model=os.environ.get("LLM_MODEL") or defaults.get("model", ""),
         base_url=os.environ.get("LLM_BASE_URL") or defaults.get("base_url", ""),
         api_key=os.environ.get("LLM_API_KEY", ""),
+        max_attempts=_max_attempts_from_env(),
     )

@@ -54,11 +54,11 @@ def test_schema_com_tipo_em_lista_e_simplificado():
 
 @pytest.mark.parametrize("exc,category", [
     (make_error(openai.APITimeoutError), "timeout"),
-    (make_error(openai.APIConnectionError), "network"),
+    (make_error(openai.APIConnectionError), "connection"),
     (make_error(openai.RateLimitError, 429), "rate_limit"),
     (make_error(openai.AuthenticationError, 401), "auth"),
-    (make_error(openai.APIStatusError, 503), "server"),
-    (make_error(openai.APIStatusError, 400), "bad_response"),
+    (make_error(openai.APIStatusError, 503), "server_error"),
+    (make_error(openai.APIStatusError, 400), "bad_request"),
     (ValueError("x"), "bad_response"),
 ])
 def test_erros_viram_llmerror_com_categoria(exc, category):
@@ -69,13 +69,15 @@ def test_erros_viram_llmerror_com_categoria(exc, category):
     assert "segredo-123" not in str(info.value)
 
 
-def test_resposta_sem_choices_e_argumentos_invalidos():
-    for resp in (NS(choices=[]),
-                 NS(choices=[NS(message=NS(content=None, tool_calls=[NS(id="1", function=NS(name="x", arguments="{ruim"))]))])):
-        sdk, _ = fake_sdk(resp)
-        with pytest.raises(LLMError) as info:
-            OpenAICompatClient(SETTINGS, client=sdk).chat([], [])
-        assert info.value.category == "bad_response"
+def test_resposta_sem_choices_e_erro_de_argumentos_sem_levantar():
+    sdk, _ = fake_sdk(NS(choices=[]))
+    with pytest.raises(LLMError) as info:
+        OpenAICompatClient(SETTINGS, client=sdk).chat([], [])
+    assert info.value.category == "bad_response"
+    bad = NS(choices=[NS(message=NS(content=None, tool_calls=[NS(id="1", function=NS(name="x", arguments="{ruim"))]))])
+    sdk, _ = fake_sdk(bad)
+    call = OpenAICompatClient(SETTINGS, client=sdk).chat([], []).tool_calls[0]
+    assert call.arguments == {} and call.arguments_error == "malformed_json"
 
 
 def test_map_exception_preserva_llmerror():
