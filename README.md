@@ -43,7 +43,7 @@ Preencha `LLM_API_KEY` no `.env` com a chave de https://aistudio.google.com/apik
 | `python main.py` | conversa com o agente real (Gemini); exige `LLM_API_KEY` |
 | `python main.py --mock` | demonstração offline, sem chave e sem LLM (ver "Modo mock" na seção 12) |
 | `python main.py --debug` | mostra as ferramentas chamadas (e-mail e telefone mascarados) e a categoria técnica de falhas; combina com `--mock` |
-| `pytest` | 445 testes offline (sem rede nem chave); 40 testes `live` ficam de fora |
+| `pytest` | 477 testes offline (sem rede nem chave); 40 testes `live` ficam de fora |
 
 No chat: `/limpar` reinicia a conversa e `/sair` encerra.
 
@@ -72,7 +72,7 @@ app/
   agent/       prompt, memória de sessão, orquestrador
   interfaces/  CLI
 scripts/       runner de cenários com o LLM real, auditoria de produtos, verificador de publicação
-tests/         445 testes offline + 40 cenários reais (marcador live)
+tests/         477 testes offline + 40 cenários reais (marcador live)
 examples/      conversas reais com o modelo
 docs/          DATA, DATA_QUALITY, KNOWLEDGE, AGENT, QUALITY, EVALUATION, PUBLICACAO e pesquisa inicial
 ```
@@ -161,7 +161,7 @@ O agente precisa de sete arquivos, todos em `data/` (nomes exatos, com espaços 
 
 A variável `EMPORIO_DATA_DIR` aponta para outra pasta com esses sete arquivos; vale para os CSVs e para o PDF. Se o PDF não for encontrado ou não puder ser lido, o agente usa o texto extraído `docs/challenge/politicas_extraido.txt` como alternativa (fica registrado na origem do manual). Se nem o PDF nem o texto existirem, o erro diz que o PDF deve ser colocado na pasta de dados. Se faltar algum CSV, o programa encerra com "Erro ao carregar os dados da loja" e o caminho do arquivo.
 
-Esses materiais são da Artefact (base fictícia do desafio e um manual marcado como documento interno de uso restrito). Se o repositório for distribuído sem eles, o avaliador deve copiá-los para `data/`. A redistribuição desses arquivos depende de autorização da Artefact; a análise e as opções estão em [docs/PUBLICACAO.md](docs/PUBLICACAO.md). Sem os dados reais, uma parte importante dos testes falha (cerca de 43% pela medição em docs/PUBLICACAO.md).
+Esses materiais foram fornecidos pela Artefact para o desafio (base fictícia e manual de políticas) e estão incluídos no repositório, sem alteração, para que o projeto seja reproduzível. O manual traz a marca de documento interno; ele é usado aqui só para este desafio. O estado da publicação está em [docs/PUBLICACAO.md](docs/PUBLICACAO.md). Sem os dados reais, uma parte importante dos testes não passa.
 
 ### Modo mock
 

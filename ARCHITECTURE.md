@@ -111,6 +111,7 @@ Contexto completo do manual no prompt (usado só como baseline conceitual), embe
 
 ## Pontos de extensão
 
+- Variáveis opcionais: `LLM_MAX_ATTEMPTS`, `TURN_TIMEOUT_SECONDS`, `EMPORIO_LOG_FILE`, `EMPORIO_DATA_DIR` (ver `.env.example`).
 - Novo provedor compatível com OpenAI: variáveis `LLM_*` no `.env` (o que não foi testado deve ser validado antes de uso).
 - Nova ferramenta: função em `app/tools/` e entrada no `registry` com schema.
 - Outro canal (web, WhatsApp): chamar o orquestrador no lugar da CLI.
