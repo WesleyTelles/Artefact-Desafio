@@ -48,11 +48,19 @@ def summarize(name: str, result: dict) -> str:
     return f"{status}: " + json.dumps(result, ensure_ascii=False, default=str)[:200]
 
 
-def render(scenario: Scenario, run: Run, failures: list[str], verdict: str) -> str:
-    lines = [f"# {scenario.id} - {scenario.name}", "",
+def render(scenario: Scenario, run: Run, failures: list[str], verdict: str, *,
+           run_number: int | None = None, record: dict | None = None) -> str:
+    title = f"{scenario.id} - {scenario.name}" + (f" (execução {run_number})" if run_number else "")
+    lines = [f"# {title}", "",
              f"- Resultado: **{verdict}**",
              f"- Requisições ao LLM: {run.llm_requests}",
              "- Dados: apenas a base fictícia da loja; e-mails e telefones de clientes mascarados."]
+    if record is not None:
+        lines += [f"- Esperado: {scenario.expected}",
+                  f"- Ferramenta esperada acionada: {record['tool_ok']}",
+                  f"- Informação inventada (preço/prazo/número fora dos dados): {record['invented'] or 'nenhuma'}",
+                  f"- Latência total: {record['latency_ms']} ms; tentativas ao provedor: {record['llm_attempts']}; "
+                  f"tokens: {record['tokens']}"]
     if scenario.fail_tool:
         lines.append(f"- Falha injetada na ferramenta `{scenario.fail_tool}`.")
     if scenario.inject:

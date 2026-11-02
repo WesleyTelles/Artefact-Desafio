@@ -1,0 +1,33 @@
+{
+  "A11#1": {
+    "correct": true,
+    "status": "passed",
+    "reason": "Falso positivo da asserção: a pergunta é sim/não ('Do you sell acoustic guitars under 1000 reais?') e a resposta citou um violão vendável (Tagima Memphis AC-39, R$ 429,90, id 83) com preço correto, sem citar produto fora do filtro. A asserção exigia 2 modelos nomeados (adequado a 'quais violões...', S03/S14). A11 passou a exigir 1 (violoes_check_1)."
+  },
+  "S14#1": {
+    "invented": [],
+    "reason": "Falso positivo do detector: 'até mil reais' (palavra) foi repetido como 'R$ 1.000' (dígitos). O detector agora aceita 'mil'/'N mil' dito pelo cliente."
+  },
+  "R10#1": {
+    "invented": [],
+    "reason": "Idem S14#1 ('e até mil reais?' -> 'R$ 1.000')."
+  },
+  "R10#2": {
+    "invented": [],
+    "reason": "Idem S14#1."
+  },
+  "R10#3": {
+    "invented": [],
+    "reason": "Idem S14#1."
+  },
+  "R03#1": {
+    "correct": false,
+    "status": "failed",
+    "reason": "Falso negativo da asserção, achado na leitura manual: a resposta diz 'em até 10 dias úteis após a devolução do produto', mas o §4.1 não define de que evento os 10 dias úteis contam (a resposta inventou o marco inicial). refund_check passou a reprovar isso."
+  },
+  "R03#2": {
+    "correct": false,
+    "status": "failed",
+    "reason": "Falso negativo da asserção, achado na leitura manual: a resposta diz 'em até 10 dias úteis após a devolução do produto', mas o §4.1 não define de que evento os 10 dias úteis contam (a resposta inventou o marco inicial). refund_check passou a reprovar isso."
+  }
+}

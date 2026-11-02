@@ -1,0 +1,23 @@
+# S06b - Pedido inexistente (execução 3)
+
+- Resultado: **PASSOU**
+- Requisições ao LLM: 2
+- Dados: apenas a base fictícia da loja; e-mails e telefones de clientes mascarados.
+- Esperado: Não confirma existência do pedido 9999; pede conferência
+- Ferramenta esperada acionada: True
+- Informação inventada (preço/prazo/número fora dos dados): nenhuma
+- Latência total: 12966 ms; tentativas ao provedor: 2; tokens: {'prompt_tokens': 5010, 'completion_tokens': 67, 'total_tokens': 5077}
+
+## Turno 1
+
+**Cliente:**
+
+> Status do pedido 9999? Meu e-mail é l***@jmail.com
+
+**Ferramentas:**
+
+- `get_order_status({"order_id": 9999, "verification": "l***@jmail.com"})` -> verification_failed:  Não foi possível confirmar os dados informados para este pedido.
+
+**Resposta final:**
+
+> Não foi possível confirmar os dados informados para este pedido. Por favor, confira o número do pedido e o e-mail ou telefone cadastrado.
