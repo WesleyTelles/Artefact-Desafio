@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from app.core.config import PROJECT_ROOT
+from app.core.config import PROJECT_ROOT, get_data_dir
 from app.core.exceptions import DataError
 
 log = logging.getLogger(__name__)
@@ -212,7 +212,7 @@ def _read_pages(pdf_path: Path, txt_path: Path) -> tuple[list[str], str]:
     try:
         pages = _pages_from_txt(txt_path)
     except OSError as exc:
-        raise DataError(f"Manual de políticas indisponível: {exc}") from exc
+        raise DataError(f"Manual de políticas indisponível: {exc}. Coloque o PDF \"{PDF_PATH.name}\" na pasta de dados (data/ ou EMPORIO_DATA_DIR), conforme o README.") from exc
     if not pages or not all(pages):
         raise DataError("Texto extraído do manual está vazio ou incompleto")
     return pages, "txt"
@@ -246,7 +246,9 @@ def build_chunks(pages: list[str]) -> tuple[Chunk, ...]:
 
 @lru_cache(maxsize=1)
 def load_manual() -> Manual:
-    pages, source = _read_pages(PDF_PATH, TXT_PATH)
+    """Lê o PDF da pasta de dados (EMPORIO_DATA_DIR ou data/); sem ele, usa o texto extraído."""
+    pdf = get_data_dir() / PDF_PATH.name
+    pages, source = _read_pages(pdf, TXT_PATH)
     return Manual(build_chunks(pages), tuple(pages), source)
 
 
