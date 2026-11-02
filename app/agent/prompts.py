@@ -63,6 +63,9 @@ def build_system_prompt(today: date | None = None) -> str:
 UNAVAILABLE_MESSAGE = ("Não consegui consultar isso agora. Tente de novo em alguns instantes ou fale com a "
                        "loja pelo (67) 3341-4444 ou (67) 3321-4500 (WhatsApp); os dois números ainda "
                        "precisam de confirmação.")
+TIMEOUT_MESSAGE = ("Demorei mais do que o esperado para consultar isso e interrompi o atendimento. Pode "
+                   "tentar de novo em instantes? Se preferir, fale com a loja pelo (67) 3341-4444 ou "
+                   "(67) 3321-4500 (WhatsApp).")
 LIMIT_MESSAGE = ("Não consegui concluir essa consulta agora. Pode tentar de novo, com outras palavras? "
                  "Se preferir, fale com a loja pelo (67) 3341-4444 ou (67) 3321-4500 (WhatsApp).")
 EMPTY_INPUT_MESSAGE = "Pode me contar o que você precisa? Estou por aqui."

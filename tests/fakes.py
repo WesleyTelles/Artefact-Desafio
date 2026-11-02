@@ -25,7 +25,7 @@ class FakeLLM:
         self.steps = list(steps)
         self.seen: list[list[dict]] = []
 
-    def chat(self, messages, tools):
+    def chat(self, messages, tools, *, timeout=None):
         self.seen.append([dict(m) for m in messages])
         if not self.steps:
             raise AssertionError("FakeLLM sem passos restantes")

@@ -24,10 +24,10 @@ from datetime import date
 from typing import Any, Callable
 
 from app.agent.memory import SessionMemory
-from app.agent.prompts import (EMPTY_INPUT_MESSAGE, LEAK_MESSAGE, LIMIT_MESSAGE, UNAVAILABLE_MESSAGE,
-                               build_system_prompt)
+from app.agent.prompts import (EMPTY_INPUT_MESSAGE, LEAK_MESSAGE, LIMIT_MESSAGE, TIMEOUT_MESSAGE,
+                               UNAVAILABLE_MESSAGE, build_system_prompt)
 from app.core.config import (MAX_ARG_CORRECTIONS, MAX_FAILED_VERIFICATIONS, MAX_INPUT_CHARS,
-                             MAX_TOOL_ITERATIONS)
+                             MAX_TOOL_ITERATIONS, turn_timeout_from_env)
 from app.core.exceptions import ToolInputError
 from app.core.telemetry import Telemetry, derive_intent
 from app.llm.base import LLMClient, LLMError, LLMResponse, ToolCall
@@ -139,7 +139,8 @@ class Agent:
                  executor: Callable[..., dict] = execute, today: date | None = None,
                  max_iterations: int = MAX_TOOL_ITERATIONS,
                  max_arg_corrections: int = MAX_ARG_CORRECTIONS,
-                 telemetry: Telemetry | None = None, session_id: str | None = None) -> None:
+                 telemetry: Telemetry | None = None, session_id: str | None = None,
+                 turn_timeout: float | None = None, clock: Callable[[], float] = time.monotonic) -> None:
         self.llm = llm
         self.memory = memory if memory is not None else SessionMemory()
         self._execute = executor
@@ -148,6 +149,8 @@ class Agent:
         self.max_arg_corrections = max_arg_corrections
         self.telemetry = telemetry if telemetry is not None else Telemetry.from_env()
         self.session_id = session_id or uuid.uuid4().hex[:8]
+        self.turn_timeout = turn_timeout if turn_timeout is not None else turn_timeout_from_env()
+        self._clock = clock
         self._turn = 0
         # Política de bloqueio (ver reset): contador da sessão zera no /limpar; o por pedido, não.
         self._failed_verifications = 0
@@ -204,11 +207,17 @@ class Agent:
         invalid_rounds: dict[str, int] = {}
         tech_failures = successes = 0
         specs = tool_specs()
+        deadline = self._clock() + self.turn_timeout
         for _ in range(self.max_iterations):
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                return self._timeout_reply(trace)
             try:
-                resp: LLMResponse = self.llm.chat(messages, specs)
+                resp: LLMResponse = self.llm.chat(messages, specs, timeout=remaining)
             except LLMError as exc:
                 stats.add_llm(exc.attempts)
+                if exc.category == "budget":
+                    return self._timeout_reply(trace)
                 log.warning("LLM indisponível (%s) após %d tentativa(s)", exc.category, exc.attempts)
                 return AgentReply(UNAVAILABLE_MESSAGE, trace, failed=True, error_category=exc.category,
                                   operator_hint=exc.hint or None)
@@ -251,6 +260,10 @@ class Agent:
                 return AgentReply(ARGS_FAILURE_MESSAGE, trace, failed=True, error_category="invalid_arguments")
         log.warning("Limite de %d iterações atingido", self.max_iterations)
         return AgentReply(LIMIT_MESSAGE, trace, failed=True, error_category="iteration_limit")
+
+    def _timeout_reply(self, trace: list[dict]) -> AgentReply:
+        log.warning("Orçamento de %.0fs do turno esgotado; atendimento interrompido", self.turn_timeout)
+        return AgentReply(TIMEOUT_MESSAGE, trace, failed=True, error_category="turn_timeout")
 
     @staticmethod
     def _invalid_call(call: ToolCall) -> dict | None:

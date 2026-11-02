@@ -85,10 +85,10 @@ class _RecordingLLM:
     def __init__(self, inner, run: Run) -> None:
         self.inner, self.run = inner, run
 
-    def chat(self, messages, tools):
+    def chat(self, messages, tools, *, timeout=None):
         self.run.llm_requests += 1
         try:
-            resp = self.inner.chat(messages, tools)
+            resp = self.inner.chat(messages, tools, timeout=timeout)
         except LLMError as exc:
             self.run.llm_errors.append(exc.category)
             self.run.llm_attempts += exc.attempts

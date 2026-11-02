@@ -280,3 +280,46 @@ def test_resposta_deterministica_entre_execucoes():
         a, _ = run(frase)
         b, _ = run(frase)
         assert a.text == b.text and a.trace == b.trace
+
+
+# --- contexto entre turnos: "qual deles é o mais barato?" ----------------------------------------
+def _dois_turnos(segunda, *, limpar=False):
+    rec = Recorder()
+    agent = Agent(MockLLM(), executor=rec)
+    primeira = agent.reply("Quais violões vocês têm?")
+    listados = [p for n, _, r in rec.log if n == "search_products" for p in r.get("products", [])][:6]
+    if limpar:
+        agent.reset()
+    return rec, agent.reply(segunda), primeira, listados
+
+
+def test_mais_barato_usa_a_ultima_listagem_sem_nova_consulta():
+    rec, resposta, primeira, listados = _dois_turnos("Qual deles é o mais barato?")
+    assert len(rec.log) == 1  # não consultou de novo
+    menor = min(listados, key=lambda p: float(p["promotion"]["promotional_price_brl"] if p.get("promotion")
+                                              else p["price_brl"]))
+    assert menor["name"] in resposta.text and "mais barato" in resposta.text
+
+
+def test_mais_caro_usa_a_mesma_listagem():
+    rec, resposta, _, listados = _dois_turnos("e qual deles é o mais caro?")
+    maior = max(listados, key=lambda p: float(p["promotion"]["promotional_price_brl"] if p.get("promotion")
+                                              else p["price_brl"]))
+    assert maior["name"] in resposta.text and len(rec.log) == 1
+
+
+def test_sem_listagem_previa_nao_inventa_contexto():
+    rec = Recorder()
+    resposta = Agent(MockLLM(), executor=rec).reply("Qual deles é o mais barato?")
+    assert rec.log == [] and "deles" not in resposta.text.lower().replace("qual deles", "")
+    assert not re.search(r"R\$\s*\d", resposta.text)  # nenhum preço sem ferramenta
+
+
+def test_contexto_e_descartado_ao_limpar_a_conversa():
+    rec, resposta, _, _ = _dois_turnos("Qual deles é o mais barato?", limpar=True)
+    assert not re.search(r"R\$\s*\d", resposta.text)
+
+
+def test_categoria_explicita_na_segunda_pergunta_faz_nova_consulta():
+    rec, _, _, _ = _dois_turnos("Qual a guitarra mais barata?")
+    assert [n for n, _, _ in rec.log] == ["search_products", "search_products"]

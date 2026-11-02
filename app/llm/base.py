@@ -15,7 +15,7 @@ Message = dict  # {"role": "system|user|assistant|tool", "content": str, ...}
 
 # Categorias de falha do provedor. Só as transitórias admitem nova tentativa.
 ERROR_CATEGORIES = ("bad_request", "auth", "not_found", "rate_limit", "server_error", "timeout",
-                    "connection", "bad_response", "config")
+                    "connection", "bad_response", "config", "budget")
 RETRYABLE_CATEGORIES = frozenset({"rate_limit", "server_error", "timeout", "connection"})
 # Categorias que indicam problema de configuração/credencial: dica ao operador, nunca ao cliente.
 OPERATOR_CATEGORIES = frozenset({"auth", "not_found", "bad_request", "config"})
@@ -62,9 +62,11 @@ class LLMResponse:
 
 
 class LLMClient(Protocol):
-    def chat(self, messages: list[Message], tools: list[dict]) -> LLMResponse:
+    def chat(self, messages: list[Message], tools: list[dict], *,
+             timeout: float | None = None) -> LLMResponse:
         """Envia a conversa e as definições de ferramentas; devolve texto e/ou tool_calls.
 
-        Levanta LLMError em falha técnica.
+        `timeout` é o orçamento em segundos para esta chamada, retries incluídos; None = sem teto extra.
+        Levanta LLMError em falha técnica (categoria "budget" se o orçamento acabou).
         """
         ...

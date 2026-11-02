@@ -13,9 +13,12 @@ Quando não entende, pede para reformular e lista o que sabe fazer (não chuta f
 Limitações conhecidas (sem NLP, só regras):
 - Frases com sinônimos fora das listas ou muito indiretas caem em "pode reformular?".
   Ex.: "quero algo grave pra tocar no coro da igreja" (sem categoria nem palavra-chave).
-- Contexto básico: só reaproveita a categoria do histórico (para teto/piso de preço) e o
-  número do pedido/e-mail já ditos. "e o preço dele?" ou "esse tem estoque?" (referência a
-  produto citado antes) não é resolvido.
+- Contexto básico: reaproveita a categoria do histórico (para teto/piso de preço), o
+  número do pedido/e-mail já ditos e a ÚLTIMA listagem de produtos mostrada (só para "qual
+  deles é o mais barato/mais caro", respondido com os preços que já vieram da ferramenta,
+  sem nova consulta). "e o preço dele?" ou "esse tem estoque?" (referência a um produto
+  específico) não é resolvido. O contexto é do próprio MockLLM, não do histórico de mensagens,
+  e é descartado quando a conversa é reiniciada.
 - Em perguntas compostas, cada trecho vira no máximo uma ferramenta; "preço do X e do Y" num
   trecho só vira uma consulta única e pode voltar "não encontrei".
 - Política: usa o trecho inteiro como consulta e mostra o primeiro resultado do manual; não
@@ -28,6 +31,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from decimal import Decimal
 
 from app.llm.base import LLMResponse, Message, ToolCall
 
@@ -50,6 +54,7 @@ apenas dele dela deles desse dessa esse essa isso aquele aquela ate abaixo acima
 _STORE_TOPICS = ((r"horario|que horas|\babre\b|\bfecha\b|aberto|funcionamento|sabado|domingo|feriado", "hours"),
                  (r"endereco|onde fica|localizacao|como chegar|onde voces ficam", "address"),
                  (r"telefone|whatsapp|zap|contato|ligar", "contacts"))
+_FOLLOW_UP = re.compile(r"\b(mais barato|mais caro|menor preco|maior preco|o mais em conta)\b")
 _NOT_STORE = re.compile(r"entreg|devol|troca|garantia|pedido")
 _POLICY = re.compile(
     r"devol|troca|trocar|arrepend|garantia|defeito|politica|pagamento|pagar|pix|boleto|cartao|credito|"
@@ -133,8 +138,10 @@ class MockLLM:
     def __init__(self) -> None:
         self.calls = 0
         self._note = ""
+        self._last_products: list[dict] = []  # última listagem exibida (contexto de "qual deles...")
 
-    def chat(self, messages: list[Message], tools: list[dict]) -> LLMResponse:
+    def chat(self, messages: list[Message], tools: list[dict], *,
+             timeout: float | None = None) -> LLMResponse:
         self.calls += 1
         last_user = max((i for i, m in enumerate(messages) if m["role"] == "user"), default=-1)
         results = [m for m in messages[last_user + 1:] if m["role"] == "tool"]
@@ -151,8 +158,13 @@ class MockLLM:
         text = _norm(raw)
         history = [_norm(t) for t in texts[:-1]]
         self._note = ""
+        if not history:
+            self._last_products = []  # conversa nova (ou /limpar): sem contexto herdado
         if _INJECTION.search(text):
             return LLMResponse(text=_REFUSE_INJECTION)
+        follow = self._follow_up(text)
+        if follow is not None:
+            return follow
         order = self._order_call(text, history, self.calls)
         if order is not None:
             return order
@@ -173,6 +185,23 @@ class MockLLM:
         if re.fullmatch(r"\W*(oi+|ola|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tchau)\W*", text):
             return LLMResponse(text=_GREETING)
         return LLMResponse(text=_REPHRASE)
+
+    def _follow_up(self, text: str) -> LLMResponse | None:
+        """"Qual deles é o mais barato/caro?" sobre a última listagem; None se não se aplica."""
+        if not self._last_products or _category_in(text) or not _FOLLOW_UP.search(text):
+            return None
+        cheapest = not re.search(r"mais caro|maior preco", text)
+
+        def price(p: dict) -> Decimal:
+            promo = p.get("promotion")
+            return Decimal(promo["promotional_price_brl"] if promo else p["price_brl"])
+
+        try:
+            best = (min if cheapest else max)(self._last_products, key=price)
+        except (KeyError, ArithmeticError, TypeError):
+            return None
+        word = "mais barato" if cheapest else "mais caro"
+        return LLMResponse(text=f"Entre os que mostrei, o {word} é: {self._line(best)}.")
 
     @staticmethod
     def _order_call(text: str, history: list[str], n: int) -> LLMResponse | None:
@@ -224,7 +253,7 @@ class MockLLM:
         stripped = re.sub(r"(?:ate|menos de|abaixo de|no maximo|por ate|de ate|acima de|a partir de|mais de|"
                           r"no minimo)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:mil)?", " ", text)
         tokens = [w for w in re.findall(r"[a-z0-9]+", stripped) if w not in _FILLER and w not in _CATEGORIES]
-        asks = re.search(r"preco|valor|custa|quanto|sai|fica|estoque|disponivel|tem|vende|trabalha", text)
+        asks = re.search(r"preco|valor|custa|quanto|sai\b|fica\b|estoque|disponivel|\btem\b|vende|trabalha", text)
         named = bool(tokens) and (asks or any(w in _BRANDS or re.search(r"[a-z]\d|\d[a-z]", w) for w in tokens))
         args: dict = {}
         if named:
@@ -286,6 +315,8 @@ class MockLLM:
         if "product" in d:
             return f"Encontrei: {self._line(d['product'])}."
         items = d.get("products") or d.get("candidates") or []
+        if len(items) > 1:
+            self._last_products = list(items[:6])  # o que foi exibido vira contexto do próximo turno
         if not items:
             return "Não encontrei opções com esses critérios."
         if len(items) == 1 and status == "found":

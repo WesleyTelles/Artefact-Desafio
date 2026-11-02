@@ -1,3 +1,4 @@
+import pytest
 """Falhas, injeção, limites e saneamento do orquestrador, com FakeLLM roteirizado."""
 from app.agent.memory import SessionMemory
 from app.agent.orchestrator import Agent, sanitize_input
@@ -247,3 +248,21 @@ def test_chave_do_bloqueio_por_pedido_ignora_zeros_e_unicode():
         assert Agent._order_key({"order_id": variante}) == "4"
     assert Agent._order_key({"order_id": "abc"}) == ""
     assert Agent._order_key("lixo") == ""
+
+
+@pytest.mark.parametrize("variante", ["02", "002", "#2", "٢", "٠٢", "２", " 2 "])
+def test_bloqueio_nao_e_contornado_por_outra_grafia_do_mesmo_pedido(variante):
+    from app.core.config import MAX_FAILED_VERIFICATIONS
+    agent = _agent_com_chutes(MAX_FAILED_VERIFICATIONS)
+    agent.reset()  # zera o contador da sessão: só o bloqueio por pedido pode barrar
+    assert _consulta(agent, variante, "anacarol.ferreira@coldmail.com") == "locked"
+
+
+def test_chutes_com_grafias_diferentes_contam_no_mesmo_pedido():
+    from app.core.config import MAX_FAILED_VERIFICATIONS
+    agent = Agent(FakeLLM([]))
+    grafias = ["2", "02", "#2", "٢", "２"]
+    for i in range(MAX_FAILED_VERIFICATIONS):
+        assert _consulta(agent, grafias[i % len(grafias)], f"chute{i}@exemplo.com") == "verification_failed"
+    agent.reset()
+    assert _consulta(agent, "0002", "outro@exemplo.com") == "locked"

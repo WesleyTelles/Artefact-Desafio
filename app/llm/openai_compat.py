@@ -108,6 +108,10 @@ def _extract_usage(resp: Any) -> dict | None:
     return out if any(isinstance(v, int) for v in out.values()) else None
 
 
+_EMPTY = ("bad_response", "Resposta vazia do provedor")
+MAX_EMPTY_RETRIES = 1  # resposta sem texto nem ferramenta costuma ser transitória no Gemini; só uma nova chamada
+
+
 class OpenAICompatClient:
     """Cliente com retry próprio (o do SDK fica desligado): só falhas transitórias são repetidas."""
 
@@ -116,7 +120,8 @@ class OpenAICompatClient:
                  backoff_base: float = LLM_BACKOFF_BASE_SECONDS, backoff_max: float = LLM_BACKOFF_MAX_SECONDS,
                  retry_after_cap: float = LLM_RETRY_AFTER_CAP_SECONDS,
                  sleep: Callable[[float], None] = time.sleep,
-                 jitter: Callable[[], float] = random.random) -> None:
+                 jitter: Callable[[], float] = random.random,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         if client is None:
             if not settings.api_key:
                 raise LLMError("config", "LLM_API_KEY não definida")
@@ -131,6 +136,8 @@ class OpenAICompatClient:
         self._backoff_max = backoff_max
         self._retry_after_cap = retry_after_cap
         self._sleep = sleep
+        self._clock = clock
+        self._timeout = timeout
         self._jitter = jitter  # float em [0, 1)
 
     def _delay(self, attempt: int, exc: BaseException) -> float:
@@ -140,23 +147,46 @@ class OpenAICompatClient:
         backoff = min(self._backoff_max, self._backoff_base * 2 ** (attempt - 1))
         return backoff * (0.5 + self._jitter() / 2)  # jitter: 50% a 100% do valor
 
-    def chat(self, messages: list[Message], tools: list[dict]) -> LLMResponse:
+    def chat(self, messages: list[Message], tools: list[dict], *,
+             timeout: float | None = None) -> LLMResponse:
         kwargs: dict[str, Any] = {"model": self._model, "messages": messages, "temperature": 0.3}
         if tools:
             kwargs["tools"] = to_openai_tools(tools)
             kwargs["tool_choice"] = "auto"
-        attempt = 0
+        deadline = None if timeout is None else self._clock() + timeout
+        attempt = empty_retries = 0
         while True:
             attempt += 1
             try:
+                if deadline is not None:
+                    remaining = deadline - self._clock()
+                    if remaining <= 0:
+                        raise LLMError("budget", "Orçamento de tempo do turno esgotado", attempts=attempt - 1)
+                    kwargs["timeout"] = min(self._timeout, remaining)
                 resp = self._convert(self._client.chat.completions.create(**kwargs))
+                if not resp.tool_calls and not (resp.text or "").strip():
+                    raise LLMError(*_EMPTY)
                 resp.attempts = attempt
                 return resp
+            except LLMError as err:  # já categorizado; só a resposta vazia ganha uma nova chamada
+                if err.category != "budget":
+                    err.attempts = attempt
+                if (err.args == (_EMPTY[1],) and empty_retries < MAX_EMPTY_RETRIES and attempt < self._max_attempts
+                        and (deadline is None or self._clock() + self._backoff_base < deadline)):
+                    empty_retries += 1
+                    log.warning("Resposta vazia do LLM; repetindo uma vez")
+                    self._sleep(self._backoff_base * (0.5 + self._jitter() / 2))
+                    continue
+                raise
             except Exception as exc:  # noqa: BLE001 - tudo vira LLMError categorizado
                 err = map_exception(exc)
                 err.attempts = attempt
                 if err.retryable and attempt < self._max_attempts:
                     delay = self._delay(attempt, exc)
+                    if deadline is not None and self._clock() + delay >= deadline:
+                        log.warning("Orçamento de tempo esgotaria na espera do retry (%s); desistindo",
+                                    err.category)
+                        raise LLMError("budget", "Orçamento de tempo do turno esgotado", attempts=attempt) from exc
                     log.warning("Falha transitória no LLM (%s), tentativa %d/%d, nova tentativa em %.1fs",
                                 err.category, attempt, self._max_attempts, delay)
                     self._sleep(delay)

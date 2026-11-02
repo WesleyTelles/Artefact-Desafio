@@ -38,6 +38,7 @@ LLM_MAX_ATTEMPTS = 3            # total de chamadas por pedido ao LLM (1 + 2 ret
 LLM_BACKOFF_BASE_SECONDS = 1.0  # espera = base * 2**(tentativa-1), com jitter, limitada pelo teto
 LLM_BACKOFF_MAX_SECONDS = 8.0
 LLM_RETRY_AFTER_CAP_SECONDS = 10.0  # teto para o cabeçalho Retry-After do provedor
+TURN_TIMEOUT_SECONDS = 60.0   # orçamento total de um turno (todas as chamadas ao LLM + esperas de retry); env TURN_TIMEOUT_SECONDS
 MAX_ARG_CORRECTIONS = 1       # correções de argumentos inválidos de ferramenta por turno
 LOG_FILE_ENV = "EMPORIO_LOG_FILE"  # caminho do log JSONL de telemetria; ausente = desligado
 
@@ -65,6 +66,14 @@ def _max_attempts_from_env() -> int:
         return min(10, max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", LLM_MAX_ATTEMPTS))))
     except ValueError:
         return LLM_MAX_ATTEMPTS
+
+
+def turn_timeout_from_env() -> float:
+    """TURN_TIMEOUT_SECONDS válido (5 a 600); valor ausente ou inválido volta ao padrão."""
+    try:
+        return min(600.0, max(5.0, float(os.environ.get("TURN_TIMEOUT_SECONDS", TURN_TIMEOUT_SECONDS))))
+    except ValueError:
+        return TURN_TIMEOUT_SECONDS
 
 
 def load_llm_settings(provider: str | None = None) -> LLMSettings:
