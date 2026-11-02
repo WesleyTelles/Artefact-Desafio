@@ -82,6 +82,8 @@ def _order_payload(store: DataStore, order: Order, customer: Customer) -> dict:
         payload["tracking_code"] = order.tracking_code
     if order.estimated_delivery:
         payload["estimated_delivery"] = order.estimated_delivery.isoformat()
+        payload["delivery_date_note"] = ("A base só tem a previsão de entrega; não há data de "
+                                         "entrega efetiva. Diga 'previsão', nunca 'entregue em'.")
     if order.notes:
         payload["notes"] = order.notes
     return payload

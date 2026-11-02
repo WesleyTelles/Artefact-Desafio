@@ -57,6 +57,7 @@ def _digits(text: str) -> str:
 def _store_contacts() -> tuple[set[str], set[str]]:
     contacts = get_store_info("contacts")["info"]["contacts"]
     phones = {_digits(contacts[k]["value"]) for k in ("phone", "whatsapp")}
+    phones |= {d[-8:] for d in phones}  # forma sem DDD, como o cliente costuma ler
     return phones, {contacts["email"]["value"].lower()}
 
 

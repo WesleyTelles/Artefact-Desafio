@@ -74,3 +74,11 @@ def test_pii_mascarada(store):
 def test_mascaras():
     assert mask_email("a@b.com") == "a***@b.com"
     assert mask_phone("(67) 3341-4444") == "(67) *****-4444"
+
+
+def test_pedido_entregue_nao_afirma_data_de_entrega_efetiva():
+    from app.data.loader import get_store
+    order_customer = get_store().customers[get_store().orders[4].customer_id]
+    r = get_order_status(4, order_customer.email)
+    assert r["status"] == "found"
+    assert "previsão" in r["delivery_date_note"]

@@ -1,4 +1,5 @@
 from datetime import date
+import pytest
 
 from app.tools.registry import TOOLS, execute, tool_specs
 
@@ -72,3 +73,14 @@ def test_erros_nunca_levantam():
 def test_retorno_da_busca_limita_o_tamanho_dos_trechos():
     r = execute("search_store_policies", {"query": "prazo do SEDEX para outra cidade"})
     assert all(len(x["text"]) <= 620 for x in r["results"])
+
+
+@pytest.mark.parametrize("pergunta,secao", [
+    ("meu violão chegou com defeito", "4.2"),
+    ("entregam em Dourados?", "5.2"),
+    ("quanto tempo demora o reembolso", "4.1"),
+])
+def test_perguntas_de_cliente_chegam_a_secao_certa(pergunta, secao):
+    r = execute("search_store_policies", {"query": pergunta})
+    assert r["status"] == "found"
+    assert secao in [x["section"] for x in r["results"]]

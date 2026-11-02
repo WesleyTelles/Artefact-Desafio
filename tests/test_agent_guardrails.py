@@ -195,3 +195,9 @@ def test_chute_de_verificacao_e_bloqueado_apos_tentativas_erradas():
 
 def test_sanitize_input_remove_bidi_e_largura_zero():
     assert sanitize_input("‮ pre​ço do⁦ Taka‍mine") == "preço do Takamine"
+
+
+def test_telefone_da_loja_sem_ddd_nao_e_mascarado():
+    from app.agent.orchestrator import sanitize_output
+    assert "3341-4444" in sanitize_output("Ligue 3341-4444")
+    assert "****-1098" in sanitize_output("fale com 3999-1098")
