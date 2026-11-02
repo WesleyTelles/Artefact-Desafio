@@ -108,7 +108,7 @@ SPECS: tuple[_Spec, ...] = (
        ["arrependimento", "troca"],
        ["devolver", "devolução", "devolvo", "arrependi", "arrependimento", "desistir", "desistência",
         "não gostei", "7 dias", "compra online", "comprei pelo site", "reembolso", "estorno",
-        "dinheiro de volta", "tempo de reembolso", "demora o reembolso", "fora do prazo", "prazo de devolução", "prazo para devolver"], ["I-8", "I-11"]),
+        "dinheiro de volta", "tempo de reembolso", "demora o reembolso", "fora do prazo", "prazo de devolução", "prazo para devolver"], ["I-8", "I-11", "I-18"]),
     _s("s4.2", "4.2", "Trocas por Defeito", "4.2 Trocas por Defeito",
        ["defeito", "troca", "garantia"],
        ["defeito", "defeituoso", "estragou", "quebrou", "não funciona", "problema", "defeito de fábrica",

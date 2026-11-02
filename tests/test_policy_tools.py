@@ -84,3 +84,9 @@ def test_perguntas_de_cliente_chegam_a_secao_certa(pergunta, secao):
     r = execute("search_store_policies", {"query": pergunta})
     assert r["status"] == "found"
     assert secao in [x["section"] for x in r["results"]]
+
+
+def test_reembolso_avisa_que_o_inicio_da_contagem_nao_esta_definido():
+    r = execute("search_store_policies", {"query": "quanto tempo demora o reembolso"})
+    assert r["status"] == "found"
+    assert "não define de que evento" in " ".join(r.get("notes", []))

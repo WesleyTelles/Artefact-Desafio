@@ -90,6 +90,8 @@ _ISSUE_NOTES = {
             "cliente.",
     "I-11": "O §4.1 se refere a compras online; o manual não trata compra presencial e os pedidos no sistema não "
             "indicam o canal da compra. Canal a confirmar com o cliente.",
+    "I-18": "O reembolso é em até 10 dias úteis, mas o manual não define de que evento a contagem parte (por "
+            "exemplo, a solicitação ou o recebimento do produto devolvido); não afirmar um início.",
     "I-12": "O manual cita 'mais de 300 instrumentos'; o catálogo disponível é o que consta no sistema.",
     "I-14": "Há dois prazos distintos: resposta em até 5 minutos em horário comercial (§7.1) e retorno de "
             "reclamação em 24 horas úteis (§7.3).",
