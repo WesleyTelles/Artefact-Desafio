@@ -13,7 +13,7 @@ Verificador: `python scripts/check_release.py [--history] [--public [--allow-csv
 | `.claude/` e `CLAUDE.md` | Em `.git/info/exclude` (não no `.gitignore`, portanto não viajam com o clone). Nenhum caminho com `claude` ou `.env` em nenhuma revisão. |
 | Autoria | 53 commits, todos de um único autor/committer (Wesley Telles, e-mail pessoal). Nenhum trailer `Co-Authored-By`/`Signed-off-by`. O e-mail do autor ficará público no histórico. |
 | PII fora de `data/` | Nenhum cliente real. Aparecem só dados da base fictícia: `docs/discovery/data_profile.md` (1 e-mail e 3 nomes de clientes da base), 7 arquivos de `tests/` com e-mails/telefones de clientes do `customers.csv` (usados como fixtures: 5 telefones e vários e-mails). Transcripts e examples não contêm nome, e-mail nem telefone de cliente. Telefones/e-mail da loja (`contato@emporiodamusica.com.br`, (67) 3341-4444) vêm do manual e são dados públicos da loja fictícia. |
-| Menções internas | `README.md` (l.171) cita Claude Code, "tech lead" e subagents (divulgação honesta de uso de IA, intencional). `docs/discovery/*` cita "Tech Lead", nomes de agentes (`ai-solution-architect`, `rag-knowledge-engineer`) e o PDF "Uso restrito". `app/knowledge/loader.py:174` tem o termo "documento interno" só como alias de busca. Opcional: neutralizar `docs/discovery/` (ver 4). |
+| Menções internas | `README.md` (seção 19) cita Claude Code, "tech lead" e subagents (divulgação honesta de uso de IA, intencional). `docs/discovery/*` cita "Tech Lead", nomes de agentes (`ai-solution-architect`, `rag-knowledge-engineer`) e o PDF "Uso restrito". `app/knowledge/loader.py:174` tem o termo "documento interno" só como alias de busca. Opcional: neutralizar `docs/discovery/` (ver 4). |
 | Telemetria `app/core/telemetry.py` | Por leitura: grava só session_id, turn_id, nome/status/duração das ferramentas, tentativas, latência, tokens, categoria de erro, intenção. Não grava texto do cliente nem argumentos. Desligada por padrão (`EMPORIO_LOG_FILE`); `logs/` está no `.gitignore`. Falha de escrita não derruba o atendimento. |
 | Teste offline `--mock --debug --log` | Entrada com e-mail `lucas.mendes@jmail.com`, telefone `(67) 99812-3456` e nome. Saída `--debug` mostrou `"verification": "l***@jmail.com"` (mascarado). JSONL com 3 linhas: 0 ocorrências de e-mail, telefone ou nome (grep). Sem chamada de LLM. |
 | `.gitignore` | Cobre `.env`, `.venv/`, caches, IDE, `logs/`. Sem lacunas encontradas. Não cobre `.claude/` e `CLAUDE.md` (cobertos só localmente em `.git/info/exclude`). Sugestão opcional: adicionar ambos ao `.gitignore` para blindar outros clones. |
@@ -25,7 +25,7 @@ Verificador: `python scripts/check_release.py [--history] [--public [--allow-csv
 2. O conteúdo do manual também aparece derivado em arquivos "publicáveis": `app/knowledge/loader.py` (marcadores e trechos de seção), `docs/KNOWLEDGE.md`, `docs/discovery/policy_analysis.md`, transcripts e `examples/` (citam regras e valores do manual). Remover apenas o PDF/TXT não elimina isso; se a Artefact negar a redistribuição do manual, esses textos também precisam de revisão.
 
 **Importante**
-3. O repositório não funciona sem os arquivos restritos e o README não diz onde colocá-los nem quais nomes exatos (ver 3).
+3. O repositório não funciona sem os arquivos restritos. (Atualização: o README agora traz a subseção "Dados necessários", na seção 12, com nomes exatos, `data/` e `EMPORIO_DATA_DIR`; ver 3 e 5.)
 4. Divergência de contagem: o pedido citava 48 commits; o real é 53 local / 46 remoto. Reescrever histórico remoto afetaria 46 commits já enviados.
 5. O e-mail pessoal do autor ficará exposto em todos os commits (aceitável se for intencional; reescrita só se desejado).
 
@@ -70,7 +70,7 @@ Método: `git archive HEAD` em diretórios temporários, remoção seletiva dos 
 | Sem PDF e sem `.txt` | 53 falhas (`test_retriever` 29, `test_mock_llm` 10, `test_knowledge_loader` 9, `test_policy_tools` 4, `test_quality` 1) | CSVs presentes, tudo de produto/pedido passa. |
 | Sem CSVs (PDF presente) | 64 falhas + 69 erros (133, 31%) | |
 | Sem nada (CSVs, PDF e `.txt`) | 116 falhas + 69 erros (185, 43%); 244 passam | Os 244 são lógica pura (llm client, resiliência, telemetria, CLI parcial). |
-| `EMPORIO_DATA_DIR` = pasta vazia | 58 falhas + 69 erros (127) | A variável só move os CSVs; **o manual vem sempre de `<raiz>/data/` e `docs/challenge/`** (`app/knowledge/loader.py:24-25`), não de `EMPORIO_DATA_DIR`. |
+| `EMPORIO_DATA_DIR` = pasta vazia | 58 falhas + 69 erros (127) | Medido na data da auditoria, quando a variável só movia os CSVs. **Atualização:** o commit posterior "lê o manual da pasta de dados configurada" faz o PDF também vir de `EMPORIO_DATA_DIR`; esta linha não foi remedida. |
 | `EMPORIO_DATA_DIR` = pasta só com CSVs | 429 passam | |
 
 Arquivos de teste que dependem dos CSVs: `test_loader`, `test_orders`, `test_products`, `test_promotions`, `test_quality`, `test_registry`, `test_adversarial`, `test_agent_flows`, `test_agent_guardrails`, `test_cli`, `test_mock_llm`, `test_scenario_checks`. Do manual: `test_knowledge_loader`, `test_retriever`, `test_policy_tools`, `test_mock_llm`, `test_quality`.
@@ -78,7 +78,7 @@ Arquivos de teste que dependem dos CSVs: `test_loader`, `test_orders`, `test_pro
 **Mensagens quando faltam arquivos**
 - CSVs ausentes: `main.py` encerra com `Erro ao carregar os dados da loja: Arquivo não encontrado: <caminho completo do primeiro CSV>`. Clara quanto ao arquivo, mas não diz onde obtê-lo nem lista os demais.
 - Manual ausente (PDF e TXT): o app inicia normalmente (carga preguiçosa); só a primeira pergunta de política falha, e o cliente recebe "Não consegui consultar isso agora... fale com a loja pelo (67) 3341-4444". O erro técnico vai só para o log (`Manual indisponível: ...`). Para o avaliador isso parece falha intermitente, sem pista de configuração. **Sugestão (fora do escopo desta tarefa, não alterado): verificação de arquivos na partida com mensagem "coloque X em data/".**
-- README não menciona nomes exatos de arquivos, nem `EMPORIO_DATA_DIR`.
+- (Estado na data da auditoria; o README foi atualizado depois e agora documenta nomes exatos e `EMPORIO_DATA_DIR` na seção 12, subseção "Dados necessários".)
 
 ## 4. Opções de distribuição
 
@@ -110,14 +110,14 @@ pip install -r requirements.txt
 Coloque na pasta `data/` (nomes exatos, com espaços e acentos):
 - `desafio_tecnico_ai_eng - categories.csv`, `- customers.csv`, `- order_items.csv`, `- orders.csv`, `- products.csv`, `- promotions.csv`
 - `políticas_da_loja.pdf`
-Opcional: `docs/challenge/politicas_extraido.txt` (fallback do PDF). Os CSVs podem ficar em outra pasta com `EMPORIO_DATA_DIR=<pasta>`, mas o PDF deve estar em `data/`.
+Opcional: `docs/challenge/politicas_extraido.txt` (fallback do PDF). Os CSVs podem ficar em outra pasta com `EMPORIO_DATA_DIR=<pasta>`, mas, na data da auditoria, o PDF devia estar em `data/` (hoje `EMPORIO_DATA_DIR` também vale para o PDF).
 ```text
 python main.py --mock               # demonstração sem chave
 copy .env.example .env  (preencher LLM_API_KEY)   # para LLM real
 python main.py --debug
 python -m pytest -q --ignore=tests/live
 ```
-Sem os dados reais, o resultado esperado é 429 testes passando apenas quando todos os arquivos acima existirem (ver tabela da seção 3). Esta seção só vale depois que o README for atualizado para trazê-la (README não foi alterado nesta tarefa).
+Sem os dados reais, o resultado esperado é 429 testes passando apenas quando todos os arquivos acima existirem (ver tabela da seção 3). O README já traz esta lista na seção 12, subseção "Dados necessários".
 
 ## 6. Comandos de publicação (NÃO executados)
 

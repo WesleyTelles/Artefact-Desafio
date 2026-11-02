@@ -23,7 +23,7 @@ Rodada de 2026-11-02 (04:59 a 05:40 UTC), modelo `gemini-3.5-flash-lite` pelo me
 | Avaliações comportamentais (definição) | `tests/live/scenarios.py`, `harness.py` + `tests/test_scenario_checks.py` | Perguntas, resultado esperado e asserções semânticas calculadas sobre os dados; o controle negativo prova que cada asserção reprova respostas erradas (sem LLM) | Nenhum resultado de modelo: é a régua, não a medição |
 | Execuções com Gemini real | `scripts/run_scenarios.py`, `pytest -m live`, resultados em `docs/evaluation/` | Como o modelo configurado se comportou nestas 120 execuções | Generalização: amostra pequena, perguntas fixas, um modelo, uma data |
 
-`pytest -q` (sem `live`): 444 testes passam, 40 `live` são ignorados para não gastar cota.
+`pytest -q` (sem `live`): 445 testes passam, 40 `live` são ignorados para não gastar cota.
 
 ## Metodologia
 
