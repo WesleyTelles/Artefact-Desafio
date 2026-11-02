@@ -45,7 +45,7 @@ Rodada de 2026-11-02 (04:59 a 05:40 UTC), modelo `gemini-3.5-flash-lite` pelo me
 | Requisições ao LLM | 269 (média 2,24 por execução); 272 chamadas ao provedor, ou seja, 3 retries absorvidos |
 | Erros | só `tool_error` em S15 (falha injetada de propósito, resposta fixa de indisponibilidade esperada); nenhum erro de provedor chegou ao agente |
 
-Os p95 por cenário na tabela abaixo equivalem ao máximo das 3 amostras. A 3ª rodada teve latências de 12 a 18 s em conversas de 1-2 requisições (S01#3 a S10#3, exceto S09#3): foi lentidão do provedor naquele momento, não retry (só S05#3 teve 2 retries e S06a#3 teve 1). O custo de tokens é dominado pelo prompt de sistema e pelas definições das 10 ferramentas reenviadas a cada requisição (~5.000 tokens por requisição).
+O p95 global usa o método nearest-rank (posição 114 de 120); interpolação linear daria cerca de 16,5 s. Os p95 por cenário na tabela abaixo equivalem ao máximo das 3 amostras. A 3ª rodada teve latências de 12 a 18 s em conversas de 1-2 requisições (S01#3 a S10#3, exceto S09#3): foi lentidão do provedor naquele momento, não retry (só S05#3 teve 2 retries e S06a#3 teve 1). O custo de tokens é dominado pelo prompt de sistema e pelas definições das 10 ferramentas reenviadas a cada requisição (~5.000 tokens por requisição).
 
 ## Resultado por cenário
 
@@ -202,3 +202,12 @@ Pré-requisito: `LLM_API_KEY` no `.env` (o runner nunca lê nem imprime a chave)
 ```
 
 Sem `--repeat`/`--out`/`--resume`, o runner mantém o comportamento antigo (1 execução, transcrições em `docs/quality/transcripts/`). Rodar de novo sem `--resume` acrescenta linhas a `runs.jsonl`; a agregação usa a última linha de cada (cenário, execução). Os resultados mudarão: o modelo não é determinístico.
+
+
+## Lacunas de cobertura e de critério (revisão independente, 2026-11-02)
+
+- Sem cenário real para os produtos 136, 139, 140 e 144; 135, 137 e 142 têm (R05, R04, R06). A ferramenta devolve `data_conflicts` para todos e isso é testado sem LLM, mas o comportamento do Gemini nesses quatro não foi medido.
+- Nenhum cenário mede a contagem do prazo de devolução (dia 7, a partir de quando); S10 e A10 só exigem "7 dias". A regra é testada em código.
+- Alguns critérios são permissivos: o detector de hedge (`_HEDGE_RE`) aceita palavras como "consta" ou "indica", R04/R06 aceitam a palavra "atendente", e R01 aprova um encaminhamento sem citar prazo. Por isso 118/120 não prova ausência de erros; é um limite inferior de verificação automática, não de qualidade.
+- A taxa ajustada inclui asserções corrigidas depois da execução (A11 e S14/R10) que não foram reexecutadas com o Gemini. A taxa bruta continua publicada ao lado.
+- Nenhuma execução foi refeita nesta etapa: as mudanças (orçamento por turno, resposta vazia) não alteram o conteúdo das respostas.

@@ -25,6 +25,20 @@ Parcelamento máximo (§3.1; parcela mínima R$ 80 em 4x-6x e R$ 100 em 7x-12x),
 ## Ferramentas
 `search_store_policies`, `check_installments`, `check_shipping`, `check_return_eligibility`, `check_pix_discount`, registradas em `app/tools/registry.py` e executadas por `execute()` (nunca levantam).
 
+## O que o agente sabe, infere, não sabe e vê contraditório
+
+| Tema | Situação | Como o sistema trata |
+|---|---|---|
+| Prazo de arrependimento (7 dias), PIX, parcelas, frete, horários | Encontrado no manual | Regra em código (`rules.py`) ou trecho citado com seção |
+| Contagem do arrependimento (recebimento = dia 0; dia 7 = limite) | Inferido pelo sistema | Código devolve `borderline` no limite; data de entrega estimada ganha margem de 2 dias. É interpretação, não texto do manual |
+| Início da contagem dos 10 dias úteis do reembolso (I-18) | Ausente no manual | Nota ao LLM: não afirmar o marco inicial; encaminhar a atendente |
+| Cancelamento, compra presencial, municípios da região metropolitana | Ausente | Responde que não sabe e orienta a loja |
+| Defeito: 30 dias (§4.2) contra 90 dias (§8.1) | Contraditório | Nota de divergência e `handoff_to_human` |
+| Telefones da loja (§1.2 e capa contra §7) | Contraditório | Informa os dois e diz que precisam de confirmação |
+| Atributos de produto que o cadastro contradiz (`data_conflicts`) | Contraditório | Não afirma o ponto e encaminha a atendente; nada é corrigido na base |
+
+As divergências I-1 a I-18 estão em `docs/discovery/policy_analysis.md` e nas notas do `loader.py`.
+
 ## Limitações
 - Busca lexical: vocabulário fora dos aliases pode falhar; consultas curtas e genéricas ("tempo") podem casar mal.
 - Divergências e lacunas são apenas sinalizadas; a decisão fica com atendente humano.
