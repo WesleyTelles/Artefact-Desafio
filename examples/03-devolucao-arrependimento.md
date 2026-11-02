@@ -1,0 +1,22 @@
+# Aplicação da política de devolução
+
+Conversa real com o modelo `gemini-3.5-flash-lite` (execução de `scripts/run_scenarios.py`). Os dados vêm da base fictícia da loja; e-mails e telefones de clientes aparecem mascarados.
+
+## Devolução por arrependimento
+
+
+### Turno 1
+
+**Cliente:**
+
+> me arrependi da compra, posso devolver?
+
+**Ferramentas:**
+
+- `search_store_policies({"query": "devolução arrependimento troca"})` -> found: {"status": "found", "source_type": "policy_manual", "query": "devolução arrependimento troca", "results": [{"chunk_id": "s4", "section": "4", "title": "Política de Trocas e Devoluções (introdução)", "
+
+**Resposta final:**
+
+> Para compras feitas pela internet, você tem até 7 dias corridos após o recebimento para solicitar a devolução por arrependimento, desde que o produto esteja na embalagem original e sem sinais de uso. 
+> 
+> Você comprou o seu instrumento aqui pelo site ou diretamente na loja física?
