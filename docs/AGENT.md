@@ -20,7 +20,7 @@ Código em `app/llm/`, `app/agent/` e `app/interfaces/cli.py`. Execução: `pyth
 ## Provedores
 `LLM_PROVIDER=gemini|groq|ollama|mock`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` (`.env.example`). Um único cliente (SDK `openai`) atende Gemini, Groq e Ollama trocando endereço, modelo e chave. Padrão gratuito: Gemini em `https://generativelanguage.googleapis.com/v1beta/openai/`, modelo `gemini-3.5-flash-lite`.
 
-**Verificado na documentação oficial do Gemini (2026-11-01):** o endereço acima; uso com o SDK `openai`; `tools` no formato `type: function` e `tool_choice: "auto"` com o modelo `gemini-3.8-flash`; o suporte às bibliotecas OpenAI é descrito como beta.
+**Verificado na documentação oficial do Gemini (2026-11-01):** o endereço acima; uso com o SDK `openai`; `tools` no formato `type: function` e `tool_choice: "auto"` com o modelo `gemini-3.8-flash` (a página de exemplos); o modelo efetivamente usado e testado é `gemini-3.5-flash-lite`; o suporte às bibliotecas OpenAI é descrito como beta.
 
 **Não verificado:** como o `tool_call_id` é devolvido nos resultados de ferramenta e se há chamadas paralelas nesse endpoint; se o endpoint aceita `type` em lista e `additionalProperties` nos schemas (por precaução o cliente os simplifica antes de enviar); cotas gratuitas atuais; compatibilidade de tool calling de Groq (`openai/gpt-oss-120b`) e Ollama (`qwen3.8`), cujos endereços e modelos padrão vêm da pesquisa de discovery. **Validação com LLM real:** feita com `gemini-3.5-flash-lite` (tool calling funcionou nos 30 cenários; ver `docs/QUALITY.md`); Groq e Ollama não foram testados. Os testes `@pytest.mark.live` rodam só com `LLM_API_KEY` e com `pytest -m live`.
 

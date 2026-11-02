@@ -30,7 +30,8 @@ app/
   llm/         interface LLMClient, cliente OpenAI-compatível, mock
   agent/       prompt, memória de sessão, orquestrador
   interfaces/  CLI
-tests/         212 testes offline + cenários reais (marcador live)
+scripts/       runner de cenários com o LLM real
+tests/         217 testes offline + cenários reais (marcador live)
 examples/      conversas reais com o modelo
 docs/          DATA, KNOWLEDGE, AGENT, QUALITY e pesquisa inicial
 ```
@@ -39,9 +40,9 @@ docs/          DATA, KNOWLEDGE, AGENT, QUALITY e pesquisa inicial
 
 | Decisão | Escolha | Por quê |
 |---|---|---|
-| Abordagem | Function calling nativo, híbrido com busca nas políticas | Dados pequenos e estruturados (63 produtos, 19 pedidos) e um manual curto. SQL livre gerado pelo LLM seria arriscado (vazamento entre clientes); RAG vetorial seria desproporcional |
+| Abordagem | Function calling nativo, híbrido com busca nas políticas | Dados pequenos e estruturados (65 produtos, 20 pedidos) e um manual curto. SQL livre gerado pelo LLM seria arriscado (vazamento entre clientes); RAG vetorial seria desproporcional |
 | Framework | Loop próprio, sem LangChain/LangGraph | O fluxo é um laço simples de tool use. Menos dependências, comportamento visível e testável com um LLM falso |
-| Modelo/provedor | Gemini (plano gratuito), `gemini-3.5-flash-lite` | Gratuito e com tool calling. Groq e Ollama configuráveis pelo mesmo cliente (não testados) |
+| Modelo/provedor | Gemini (plano gratuito), `gemini-3.5-flash-lite`, pelo endpoint compatível com OpenAI (em beta) | Qualquer avaliador consegue uma chave gratuita; tool calling funciona nos testes reais; `flash-lite` por custo e cota. Anthropic e OpenAI foram pesquisados (`docs/discovery/tech_research.md`) e não implementados. Cota gratuita é baixa (houve 429) e, no plano gratuito, o Google pode usar os dados enviados; aqui são só dados fictícios. Gemini 3 exige devolver a `thought_signature` das chamadas de ferramenta (tratado). Groq e Ollama: configuráveis pelo mesmo cliente, **não testados, modelos padrão não verificados** |
 | Interface | CLI | O foco é o agente |
 | Persistência | Só memória da sessão (RAM) | Cada execução é uma conversa; guardar histórico traria dados pessoais sem ganho para o cliente |
 | Dados | `csv` da stdlib, `Decimal` para dinheiro | Volume pequeno; pandas e banco não agregam |
@@ -65,7 +66,7 @@ O prompt de sistema (`app/agent/prompts.py`) define: tom informal e profissional
 
 ## 7. Retrieval das políticas
 
-BM25 próprio sobre 29 trechos (um por subseção) extraídos do PDF com `pypdf`, com normalização de acentos, stopwords, apelidos de cliente (devolver, arrependi, frete) e limiar de confiança. Abaixo do limiar, a resposta é "não encontrado" e o encaminhamento a um atendente. Sem embeddings porque o manual tem 8 páginas e vocabulário controlado. Regras numéricas (parcelas, frete, prazo de 7 dias) ficam em código. Ver `docs/KNOWLEDGE.md`.
+BM25 próprio sobre 29 trechos (a pesquisa inicial sugeria colocar o manual inteiro no prompt; preferi trechos por seção porque a origem de cada resposta é auditável e o prompt fica curto) (um por subseção) extraídos do PDF com `pypdf`, com normalização de acentos, stopwords, apelidos de cliente (devolver, arrependi, frete) e limiar de confiança. Abaixo do limiar, a resposta é "não encontrado" e o encaminhamento a um atendente. Sem embeddings porque o manual tem 8 páginas e vocabulário controlado. Regras numéricas (parcelas, frete, prazo de 7 dias) ficam em código. Ver `docs/KNOWLEDGE.md`.
 
 ## 8. Tratamento dos dados
 
@@ -85,10 +86,10 @@ Janela de 20 mensagens em RAM, só texto do cliente e resposta final. `/limpar` 
 
 ## 11. Configuração do provedor (LLM)
 
-Crie uma chave gratuita no Google AI Studio e copie o modelo de configuração:
+Crie uma chave gratuita no Google AI Studio (https://aistudio.google.com/apikey) e copie o modelo de configuração:
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # Windows (cmd/PowerShell): copy .env.example .env
 ```
 
 Preencha `LLM_API_KEY` no `.env`. O padrão é `LLM_PROVIDER=gemini` e o modelo `gemini-3.5-flash-lite`. Para Groq ou Ollama, ajuste `LLM_PROVIDER`, `LLM_MODEL` e `LLM_BASE_URL`. Sem chave, use `--mock` (seção 12).
@@ -114,7 +115,7 @@ O modo `--mock` é só uma demonstração: escolhe a ferramenta por palavras-cha
 pytest
 ```
 
-Roda 212 testes sem rede nem chave. Cenários com o LLM real (usam a cota da chave):
+Roda 217 testes sem rede nem chave. Cenários com o LLM real (usam a cota da chave):
 
 ```bash
 pytest -m live
@@ -134,7 +135,7 @@ As demais transcrições (30, incluindo 12 ataques) estão em `docs/quality/tran
 
 ## 15. Qualidade e resultados
 
-Com o LLM real, 16 cenários e 12 ataques passaram, uma execução cada. Falhas achadas e corrigidas: o mock respondia errado a assunto fora do escopo, não havia limite de tentativas de verificação de pedido e caracteres invisíveis chegavam ao LLM. Detalhes em [docs/QUALITY.md](docs/QUALITY.md).
+Com o LLM real, 16 cenários e 12 ataques passaram, uma execução cada. Três asserções do runner foram ajustadas após a primeira execução por serem estritas demais (falsos positivos do teste); os cenários foram reexecutados. Falhas achadas e corrigidas: o mock respondia errado a assunto fora do escopo, não havia limite de tentativas de verificação de pedido e caracteres invisíveis chegavam ao LLM. Detalhes em [docs/QUALITY.md](docs/QUALITY.md).
 
 ## 16. Suposições
 
@@ -151,6 +152,10 @@ Com o LLM real, 16 cenários e 12 ataques passaram, uma execução cada. Falhas 
 - Falha parcial de ferramenta depende do prompt.
 - Mascaramento por regex pode deixar passar telefones em formatos incomuns.
 - Sem persistência entre execuções, sem streaming e sem interface web.
+- O agente não vê a descrição nem as specs dos produtos, e a base tem descrições que divergem do nome (ids 135 a 144); esses conflitos não são detectados.
+- Observabilidade mínima: sem logs estruturados, latência ou tokens por turno.
+- O contador de verificações erradas vale por execução do programa e não zera com `/limpar`.
+- `--debug` mostra os argumentos das ferramentas, inclusive o e-mail/telefone digitado.
 - Pergunta em inglês é respondida em português.
 
 ## 18. O que faria com mais tempo
@@ -163,7 +168,15 @@ Com o LLM real, 16 cenários e 12 ataques passaram, uma execução cada. Falhas 
 
 ## 19. Uso de assistentes de código
 
-Usei o Claude Code (Anthropic) como assistente durante todo o desenvolvimento: pesquisa e análise dos dados e do manual, escrita do código e dos testes, revisão adversarial e rascunho dos documentos. Eu defini os requisitos, as regras de trabalho (nada de inventar dados, commits pequenos, sem segredos no repositório) e revisei o resultado. As conversas de exemplo vêm de execuções reais com o Gemini, não foram escritas à mão.
+Usei o **Claude Code** (Anthropic) como assistente em todo o desenvolvimento, com a sessão principal atuando como tech lead e seis subagents com papéis separados: arquiteto de solução (pesquisa e decisões), engenheiro de dados (CSVs e ferramentas), engenheiro de conhecimento (manual e busca), engenheiro do agente (orquestrador e CLI), QA e segurança (testes e revisão independente) e redator técnico (documentação). O trabalho seguiu 7 fases (descoberta, dados, conhecimento, agente, interface, testes e revisão, entrega), com um responsável por tarefa.
+
+**O que foi minha decisão:** os requisitos e as regras de trabalho (não inventar dados, regras de negócio em código, commits pequenos, nenhum segredo no repositório, sem publicar sem minha autorização), a escolha do provedor gratuito, a criação do repositório e a aprovação de cada fase.
+
+**O que a IA fez:** pesquisa e comparação de tecnologias, análise dos CSVs e do manual (incluindo as inconsistências do manual), escrita de código e testes, revisão adversarial e rascunho dos documentos.
+
+**Controle de qualidade:** a revisão da Fase 6 e uma revisão final pré-entrega foram feitas por agentes diferentes dos que escreveram o código, e as conclusões foram conferidas por execução (pytest, chamadas diretas às ferramentas, execução real com o Gemini). Isso encontrou erros reais, corrigidos com teste: o modo mock respondia errado a assunto fora do escopo, não havia limite de tentativas de verificação de pedido, caracteres invisíveis chegavam ao LLM, a resposta de um pedido entregue afirmava uma data de entrega que a base não tem (só há previsão), telefones da loja sem DDD eram mascarados e perguntas comuns ("chegou com defeito", "entregam em Dourados?") não achavam a seção do manual. Também precisei corrigir números errados na documentação (contagem de produtos e pedidos).
+
+**Limites:** as conversas de `examples/` foram capturadas de execuções reais, não escritas à mão. Nem tudo foi validado por mim linha a linha; por isso a seção 17 lista o que não foi comprovado. Os arquivos de configuração local do assistente não fazem parte deste repositório.
 
 ## 20. Estrutura de documentos
 

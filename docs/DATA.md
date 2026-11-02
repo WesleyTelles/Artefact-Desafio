@@ -27,10 +27,12 @@ Perfil completo dos CSVs: `docs/discovery/data_profile.md`. Aqui ficam as decis�
 `get_store_info` traz só o confirmado no manual v2.1, com seção e página. Os dois telefones divergentes ((67) 3341-4444 no §1.2/capa e WhatsApp (67) 3321-4500 no §7) estão marcados `to_confirm`.
 
 ## Limitações
-- Sem frete, parcelamento nem política: fora do escopo desta fase.
+- Frete, parcelamento e política não são tratados nesta camada; ver `docs/KNOWLEDGE.md` (fase 3).
+- Descrição e specs dos produtos não são devolvidas ao LLM; a descrição só entra como fallback de busca. Em alguns produtos (ids 135 a 144) a descrição cita outra marca/modelo ou um número que diverge das specs (ex.: 137 e 142); o agente não detecta esses conflitos.
+- `delivered` em pedidos: a base só tem a previsão de entrega, não a data efetiva; a ferramenta avisa isso ao LLM.
 - Sem data de vigência nas promoções: "ativa" é a flag.
 - Sinônimos de categoria são uma lista fixa; termos fora dela só casam por nome/descrição.
 - A busca por descrição é um fallback e pode ser menos precisa.
 
 ## Testes
-`pytest` (63 testes) cobre os casos de aceite, incluindo CSV corrompido em `tmp_path`.
+`pytest` (217 testes no total do projeto) cobre os casos de aceite, incluindo CSV corrompido em `tmp_path`.

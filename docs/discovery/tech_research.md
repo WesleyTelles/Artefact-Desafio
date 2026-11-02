@@ -1,13 +1,15 @@
 # Pesquisa tecnica (Discovery) - Emporio da Musica
 
+> **STATUS (fase 1, pesquisa inicial).** Este documento registra as alternativas pesquisadas e a recomendação feita na época. A implementação final difere em pontos importantes: o provedor implementado e validado é o **Gemini** (`gemini-3.5-flash-lite`, plano gratuito, endpoint compatível com OpenAI, um único cliente em `app/llm/openai_compat.py`); **Anthropic foi apenas uma alternativa pesquisada e não foi implementada**. As políticas usam BM25 próprio sobre 29 trechos (em vez de contexto completo), a ferramenta é `search_store_policies` e o comando é `python main.py --mock`. Não foi implementado log JSONL. Decisão final: README §4 e ARCHITECTURE.md.
+
 Data da pesquisa: 2026-11-01. Autor: ai-solution-architect. Precos e nomes de modelo vieram das paginas oficiais listadas ao final; o que nao foi confirmado em fonte oficial esta marcado como **[nao verificado]**.
 
 ## 0. Fatos do problema que guiam as decisoes (medidos em `data/` e `docs/challenge/`)
 
 | Fato | Valor | Implicacao |
 |---|---|---|
-| products.csv | 64 linhas (63 produtos + cabecalho), 22 KB | Cabe em memoria; filtro/busca em Python/pandas ou dict, sem banco vetorial |
-| customers / orders / order_items / promotions / categories | 49 / 19 / 21 / 24 / 8 linhas (incl. cabecalho) | Idem; dados relacionais minusculos |
+| products.csv | 65 produtos (registros), 22 KB | Cabe em memoria; filtro/busca em Python/pandas ou dict, sem banco vetorial |
+| customers / orders / order_items / promotions / categories | 50 / 20 / 22 / 25 / 9 registros | Idem; dados relacionais minusculos |
 | Politicas (texto extraido) | 12,7 KB (~4 mil tokens) | Cabe inteiro no contexto de qualquer modelo atual (janelas de 1M tokens na familia Claude 5.x) |
 | PDF original | 180 KB, `docs/challenge/politicas_extraido.txt` ja existe | Extracao deve ser reprodutivel no codigo (PyMuPDF/pypdf) e comparavel ao texto de referencia |
 
