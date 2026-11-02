@@ -201,3 +201,41 @@ def test_telefone_da_loja_sem_ddd_nao_e_mascarado():
     from app.agent.orchestrator import sanitize_output
     assert "3341-4444" in sanitize_output("Ligue 3341-4444")
     assert "****-1098" in sanitize_output("fale com 3999-1098")
+
+
+def _agent_com_chutes(n, order_id=2):
+    agent = Agent(FakeLLM([]))
+    for i in range(n):
+        email = f"chute{i}@exemplo.com"
+        agent.llm.steps = [tool_step("get_order_status", {"order_id": order_id, "verification": email}),
+                           text_step("Não foi possível confirmar.")]
+        agent.reply(f"pedido {order_id}, e-mail {email}")
+    return agent
+
+
+def _consulta(agent, order_id, email):
+    agent.llm.steps = [tool_step("get_order_status", {"order_id": order_id, "verification": email}),
+                       text_step("ok")]
+    return agent.reply(f"pedido {order_id}, e-mail {email}").trace[0]["status"]
+
+
+def test_limpar_zera_contador_da_sessao_mas_bloqueio_por_pedido_persiste():
+    from app.core.config import MAX_FAILED_VERIFICATIONS
+    agent = _agent_com_chutes(MAX_FAILED_VERIFICATIONS)
+    assert _consulta(agent, 2, "anacarol.ferreira@coldmail.com") == "locked"
+    agent.reset()
+    assert len(agent.memory) == 0 and agent._failed_verifications == 0
+    # mesmo pedido continua bloqueado: /limpar não dá novas tentativas de adivinhar
+    assert _consulta(agent, 2, "anacarol.ferreira@coldmail.com") == "locked"
+    # outro pedido volta a ser consultável (contador da sessão reiniciado)
+    assert _consulta(agent, 3, "chute-outro@exemplo.com") == "verification_failed"
+
+
+def test_chutes_em_pedidos_diferentes_bloqueiam_a_sessao_e_limpar_reinicia():
+    from app.core.config import MAX_FAILED_VERIFICATIONS
+    agent = Agent(FakeLLM([]))
+    for i in range(MAX_FAILED_VERIFICATIONS):
+        assert _consulta(agent, 100 + i, f"x{i}@exemplo.com") == "verification_failed"
+    assert _consulta(agent, 2, "y@exemplo.com") == "locked"  # bloqueio da sessão
+    agent.reset()
+    assert _consulta(agent, 2, "y@exemplo.com") == "verification_failed"
