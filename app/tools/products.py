@@ -7,6 +7,7 @@ from app.core.exceptions import ToolInputError
 from app.data.loader import get_store
 from app.data.models import DataStore, Product
 from app.data.normalize import format_brl, money_str, normalize_text, tokenize
+from app.data.quality import Finding, product_attributes, product_conflicts
 from app.tools.promotions import active_promotion_for, promotion_info
 
 # sinônimo normalizado -> category_id (ids do categories.csv)
@@ -33,6 +34,19 @@ STOPWORDS = {"de", "do", "da", "dos", "das", "um", "uma", "o", "a", "os", "as", 
 MAX_RESULTS = 20
 MAX_CANDIDATES = 10
 
+MAX_DESCRIPTION_CHARS = 240   # limita o contexto enviado ao LLM
+MAX_OTHER_SPECS = 6
+MAX_SPEC_VALUE_CHARS = 40
+HANDLED_SPEC_KEYS = {"strings", "keys", "pieces", "electronics", "color",
+                     "body", "top", "back_sides", "neck", "shells"}
+CONFLICT_NOTE = ("O cadastro deste produto tem dados divergentes entre si (ver data_conflicts). NÃO "
+                 "afirme esses pontos como confirmados nem repita a descrição neles; diga ao cliente "
+                 "que a informação precisa ser confirmada e encaminhe a um atendente da loja "
+                 "(contato via get_store_info). Atributos com status 'absent'/'unknown' não existem "
+                 "nos dados: não complete.")
+DESCRIPTION_MATCH_NOTE = ("A busca casou só pela descrição, não pelo nome. Confirme apenas o produto "
+                          "pelo nome cadastrado; não afirme que ele é a marca/modelo buscada.")
+
 AVAILABILITY_LABELS = {
     "in_stock": "Em estoque",
     "out_of_stock": "Ativo, sem estoque no momento",
@@ -54,7 +68,38 @@ def is_available(product: Product) -> bool:
     return product.status == "active" and product.stock_quantity > 0
 
 
-def product_summary(store: DataStore, product: Product) -> dict:
+def _conflict_dict(f: Finding) -> dict:
+    return {"field": f.field, "type": f.kind, "severity": f.severity,
+            "description_says": f.description_says, "specs_say": f.structured_says,
+            "compared_with": f.compared_with}
+
+
+def _other_specs(product: Product) -> dict:
+    others = {k: str(v)[:MAX_SPEC_VALUE_CHARS] for k, v in product.specs.items()
+              if k not in HANDLED_SPEC_KEYS and str(v).strip()}
+    return dict(list(others.items())[:MAX_OTHER_SPECS])
+
+
+def product_details(store: DataStore, product: Product, conflicts: list[Finding]) -> dict:
+    """Descrição truncada + atributos classificados (confirmed/absent/contradictory/unverifiable)."""
+    text = product.description
+    out = {
+        "description": text[:MAX_DESCRIPTION_CHARS] + ("…" if len(text) > MAX_DESCRIPTION_CHARS else ""),
+        "attributes": product_attributes(store, product, conflicts),
+        "other_specs_not_cross_checked": _other_specs(product),
+    }
+    if conflicts:
+        out["description_warning"] = "A descrição contradiz outros campos; não cite os pontos em data_conflicts."
+    return out
+
+
+def _missing_terms_in_name(product: Product, terms: list[str]) -> list[str]:
+    name = normalize_text(product.name)
+    return [t for t in terms if not _matches_text(name, [t])]
+
+
+def product_summary(store: DataStore, product: Product, *, detail: bool = False,
+                    matched_on: str | None = None, query_terms: list[str] | None = None) -> dict:
     code = availability_of(product)
     out = {
         "product_id": product.product_id,
@@ -70,7 +115,29 @@ def product_summary(store: DataStore, product: Product) -> dict:
     }
     promo = active_promotion_for(store, product)
     out["promotion"] = promotion_info(product, promo) if promo else None
+    if matched_on:
+        out["matched_on"] = matched_on
+        if matched_on == "description":
+            out["query_terms_not_in_name"] = _missing_terms_in_name(product, query_terms or [])
+            out["match_warning"] = DESCRIPTION_MATCH_NOTE
+    conflicts = product_conflicts(store, product)
+    if conflicts or detail:
+        out["data_conflicts"] = [_conflict_dict(f) for f in conflicts]
+    if detail:
+        out["details"] = product_details(store, product, conflicts)
     return out
+
+
+def _with_notes(result: dict, summaries: list[dict]) -> dict:
+    """Instrui o LLM quando algum produto tem conflito de dados ou casou só pela descrição."""
+    notes = []
+    if any(s.get("data_conflicts") for s in summaries):
+        notes.append(CONFLICT_NOTE)
+    if any(s.get("matched_on") == "description" for s in summaries):
+        notes.append(DESCRIPTION_MATCH_NOTE)
+    if notes:
+        result["note"] = " ".join(notes)
+    return result
 
 
 def _to_decimal(value, field: str) -> Decimal | None:
@@ -207,14 +274,18 @@ def search_products(query: str | None = None, category: str | None = None,
     else:
         pool.sort(key=lambda p: p.product_id)
 
+    matched_on = match_scope if terms else None
     if terms and len(pool) > 1:
-        return {"status": "ambiguous", "reason": "multiple_matches", "query": query,
-                "match_scope": match_scope, "total_matches": len(pool),
-                "candidates": [product_summary(store, p) for p in pool[:MAX_CANDIDATES]]}
+        candidates = [product_summary(store, p, matched_on=matched_on, query_terms=terms)
+                      for p in pool[:MAX_CANDIDATES]]
+        return _with_notes({"status": "ambiguous", "reason": "multiple_matches", "query": query,
+                            "match_scope": match_scope, "total_matches": len(pool),
+                            "candidates": candidates}, candidates)
     shown = pool[:limit]
-    return {"status": "found", "match_scope": match_scope, "total_matches": len(pool),
-            "truncated": len(pool) > len(shown),
-            "products": [product_summary(store, p) for p in shown]}
+    products = [product_summary(store, p, detail=len(shown) == 1, matched_on=matched_on,
+                                query_terms=terms) for p in shown]
+    return _with_notes({"status": "found", "match_scope": match_scope, "total_matches": len(pool),
+                        "truncated": len(pool) > len(shown), "products": products}, products)
 
 
 def check_product_availability(product_id: int | None = None, name: str | None = None,
@@ -229,11 +300,17 @@ def check_product_availability(product_id: int | None = None, name: str | None =
         product = store.products.get(product_id)
         if product is None:
             return {"status": "not_found", "reason": "product_not_found", "product_id": product_id}
-        return {"status": "found", "product": product_summary(store, product)}
+        summary = product_summary(store, product, detail=True)
+        return _with_notes({"status": "found", "product": summary}, [summary])
     result = search_products(query=name, store=store)
     if result["status"] == "found":
         if len(result["products"]) == 1:
-            return {"status": "found", "product": result["products"][0]}
-        return {"status": "ambiguous", "reason": "multiple_matches", "query": name,
-                "total_matches": result["total_matches"], "candidates": result["products"][:MAX_CANDIDATES]}
+            single = {"status": "found", "product": result["products"][0]}
+            if "note" in result:
+                single["note"] = result["note"]
+            return single
+        candidates = result["products"][:MAX_CANDIDATES]
+        return _with_notes({"status": "ambiguous", "reason": "multiple_matches", "query": name,
+                            "total_matches": result["total_matches"], "candidates": candidates},
+                           candidates)
     return result
