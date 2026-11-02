@@ -1,6 +1,8 @@
 # Preparação para publicação do repositório
 
 Auditoria de 2026-11-02 (estado local: branch `main`, 53 commits; `origin/main` tem 46, o local está 7 à frente).
+
+> **Defasagem conhecida.** As contagens e a medição com dados ausentes (seções 1 a 3) foram feitas com 53 commits e 429 testes. Depois disso o repositório recebeu mais commits e hoje a suíte tem 446 testes (40 `live` à parte); a medição de dependência dos dados não foi refeita. Atenção à opção B2: um repositório novo de commit único conflita com a exigência do enunciado de histórico com progresso real; só serve se o histórico for preservado de outra forma.
 Nada aqui foi executado contra o remoto. Todo comando marcado **exige aprovação** deve ser rodado só pelo dono do repositório.
 Verificador: `python scripts/check_release.py [--history] [--public [--allow-csv]]` (somente leitura, exit 1 se houver pendência).
 

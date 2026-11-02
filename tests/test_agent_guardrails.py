@@ -239,3 +239,11 @@ def test_chutes_em_pedidos_diferentes_bloqueiam_a_sessao_e_limpar_reinicia():
     assert _consulta(agent, 2, "y@exemplo.com") == "locked"  # bloqueio da sessão
     agent.reset()
     assert _consulta(agent, 2, "y@exemplo.com") == "verification_failed"
+
+
+def test_chave_do_bloqueio_por_pedido_ignora_zeros_e_unicode():
+    from app.agent.orchestrator import Agent
+    for variante in ("4", "04", "0004", " 4 ", "#4", "٤", "４", 4):
+        assert Agent._order_key({"order_id": variante}) == "4"
+    assert Agent._order_key({"order_id": "abc"}) == ""
+    assert Agent._order_key("lixo") == ""

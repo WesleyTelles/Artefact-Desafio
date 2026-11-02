@@ -31,7 +31,7 @@ from app.core.config import (MAX_ARG_CORRECTIONS, MAX_FAILED_VERIFICATIONS, MAX_
 from app.core.exceptions import ToolInputError
 from app.core.telemetry import Telemetry, derive_intent
 from app.llm.base import LLMClient, LLMError, LLMResponse, ToolCall
-from app.tools.orders import mask_email, mask_phone
+from app.tools.orders import _parse_order_id, mask_email, mask_phone
 from app.tools.registry import TOOLS, execute, tool_specs, validate_args
 from app.tools.store_info import get_store_info
 
@@ -294,11 +294,19 @@ class Agent:
         return AgentReply(sanitize_output(text.strip(), system), trace)
 
     # --- ferramentas -----------------------------------------------------------
+    @staticmethod
+    def _order_key(args: Any) -> str:
+        """Número canônico do pedido ("4", "04", "#4" e dígitos Unicode contam como o mesmo)."""
+        try:
+            return str(_parse_order_id(args.get("order_id"))) if isinstance(args, dict) else ""
+        except Exception:
+            return ""
+
     def _run_tool(self, name: str, args: Any, user_texts: list[str]) -> dict:
         if name == "get_order_status" and not self._verification_from_user(args, user_texts):
             return {"status": "verification_required",
                     "message": "Informe o e-mail ou o telefone cadastrado no pedido."}
-        order_key = _digits(str(args.get("order_id", ""))) if isinstance(args, dict) else ""
+        order_key = self._order_key(args)
         if name == "get_order_status" and (self._failed_verifications >= MAX_FAILED_VERIFICATIONS
                                            or self._order_failures.get(order_key, 0) >= MAX_FAILED_VERIFICATIONS):
             return {"status": "locked",
