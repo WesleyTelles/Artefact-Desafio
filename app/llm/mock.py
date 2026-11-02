@@ -1,9 +1,27 @@
 """MockLLM: demonstração offline, determinística e sem chave.
 
-NÃO é um modelo de linguagem. É uma política de palavras-chave que escolhe a
-ferramenta, emite `tool_calls` de verdade e redige a resposta a partir do que a
-ferramenta devolveu (nunca de memória). Serve para testar o fluxo e demonstrar o
-atendimento sem rede; a qualidade de conversa de um LLM real não é representada.
+NÃO é um modelo de linguagem e NÃO representa o comportamento do agente com Gemini (ou outro
+LLM real). É uma política de INTENÇÕES simples: normaliza o texto (minúsculas, sem acento),
+divide perguntas compostas em trechos, classifica cada trecho por listas de sinônimos e regras
+claras, extrai parâmetros (categoria, teto/piso de preço, número do pedido, e-mail/telefone,
+valor, data) e emite `tool_calls` reais (várias na mesma rodada, se for composta). A resposta
+é redigida só a partir do que as ferramentas devolveram: not_found, ambiguous, error, locked e
+verification_failed são refletidos como tal; nada de preço, estoque ou prazo vem de memória.
+
+Quando não entende, pede para reformular e lista o que sabe fazer (não chuta ferramenta).
+
+Limitações conhecidas (sem NLP, só regras):
+- Frases com sinônimos fora das listas ou muito indiretas caem em "pode reformular?".
+  Ex.: "quero algo grave pra tocar no coro da igreja" (sem categoria nem palavra-chave).
+- Contexto básico: só reaproveita a categoria do histórico (para teto/piso de preço) e o
+  número do pedido/e-mail já ditos. "e o preço dele?" ou "esse tem estoque?" (referência a
+  produto citado antes) não é resolvido.
+- Em perguntas compostas, cada trecho vira no máximo uma ferramenta; "preço do X e do Y" num
+  trecho só vira uma consulta única e pode voltar "não encontrei".
+- Política: usa o trecho inteiro como consulta e mostra o primeiro resultado do manual; não
+  sintetiza nem compara seções.
+- Produto sem marca/modelo reconhecível (ex.: "aquele violão vermelho") vira listagem por
+  categoria ou pedido de reformulação.
 """
 from __future__ import annotations
 
@@ -14,25 +32,52 @@ import unicodedata
 from app.llm.base import LLMResponse, Message, ToolCall
 
 _CATEGORIES = {"violao": "violão", "violoes": "violão", "guitarra": "guitarra", "guitarras": "guitarra",
-               "baixo": "baixo", "baixos": "baixo", "bateria": "bateria", "baterias": "bateria",
-               "teclado": "teclado", "teclados": "teclado", "piano": "piano", "ukulele": "ukulele",
-               "ukuleles": "ukulele", "saxofone": "saxofone", "flauta": "flauta"}
-_ACCESSORY = ("corda", "palheta", "cabo", "capa", "case", "pedal", "pedais", "afinador", "amplificador",
-              "suporte")
-_STORE_TOPICS = (("horario", "hours"), ("funcionamento", "hours"), ("que horas", "hours"), ("abre", "hours"), ("endereco", "address"),
-                 ("onde fica", "address"), ("localizacao", "address"), ("telefone", "contacts"),
-                 ("whatsapp", "contacts"), ("contato", "contacts"), ("email", "contacts"))
-_POLICY_WORDS = ("devol", "troca", "trocar", "arrepend", "garantia", "defeito", "politica", "pagamento",
-                 "pix", "boleto", "entrega", "prazo", "cancel", "reembolso", "estorno", "privacidade")
-_FILLER = {"qual", "o", "a", "os", "as", "preco", "valor", "do", "da", "de", "quanto", "custa", "voces",
-           "tem", "no", "na", "um", "uma", "gostaria", "saber", "queria", "me", "diga", "esta", "estao",
-           "disponivel", "estoque", "ainda", "e", "por", "favor", "pra", "para", "ver", "quero", "sobre",
-           "vcs", "ola", "oi", "bom", "dia", "tarde", "noite", "preco", "e"}
+               "baixo": "baixo", "baixos": "baixo", "contrabaixo": "baixo", "bateria": "bateria",
+               "baterias": "bateria", "teclado": "teclado", "teclados": "teclado", "piano": "piano",
+               "pianos": "piano", "ukulele": "ukulele", "ukuleles": "ukulele", "saxofone": "saxofone",
+               "saxofones": "saxofone", "flauta": "flauta", "flautas": "flauta", "violino": "violino",
+               "violinos": "violino"}
+_BRANDS = {"yamaha", "takamine", "martin", "taylor", "tagima", "giannini", "crafter", "rozini", "shelby",
+           "fender", "gibson", "ibanez", "kala", "kalani", "ohana", "prs"}
+_ACCESSORY = {"corda", "palheta", "cabo", "capa", "case", "pedal", "afinador", "amplificador", "suporte",
+              "estojo", "correia", "banqueta", "metronomo", "microfone"}
+_FILLER = set("""qual quais o a os as um uma uns umas do da dos das de em no na nos nas por pra para com sem
+e ou que quanto quanta custa custam preco valor precos valores sai fica ficam sao tem tenho temos tinha
+voce voces vcs vc ola oi bom boa dia tarde noite gostaria saber queria quero ver me diga dizer fala esta
+estao disponivel disponiveis estoque ainda favor poderia pode podem mostre mostra mostrar lista listar
+opcoes vende vendem vendo trabalha trabalham possui possuem loja existe existem ha aqui la tambem so
+apenas dele dela deles desse dessa esse essa isso aquele aquela ate abaixo acima menos mais mil reais real r barato baratos""".split())
+_STORE_TOPICS = ((r"horario|que horas|\babre\b|\bfecha\b|aberto|funcionamento|sabado|domingo|feriado", "hours"),
+                 (r"endereco|onde fica|localizacao|como chegar|onde voces ficam", "address"),
+                 (r"telefone|whatsapp|zap|contato|ligar", "contacts"))
+_NOT_STORE = re.compile(r"entreg|devol|troca|garantia|pedido")
+_POLICY = re.compile(
+    r"devol|troca|trocar|arrepend|garantia|defeito|politica|pagamento|pagar|pix|boleto|cartao|credito|"
+    r"entreg|envi|correio|sedex|jadlog|prazo|cancel|reembols|estorno|dinheiro de volta|privacidade|lgpd|"
+    r"nota fiscal|retirar|retirada|quebr|estrag|danific|nao funciona|parcel|frete|desconto")
 _OFF_TOPIC = re.compile(r"\b(copa do mundo|copa|futebol|campeonato|quem ganhou|presidente|eleicao|"
-                        r"receita de|previsao do tempo|horoscopo|novela|filme|bitcoin|bolsa de valores|"
-                        r"capital d[aeo]s?)\b")
-_PHONE = r"\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}"
+                        r"receita de|previsao do tempo|clima|horoscopo|novela|filme|bitcoin|"
+                        r"bolsa de valores|capital d[aeo]s?|piada|poema|programar|python|matematica)\b")
+_INJECTION = re.compile(r"ignore|esqueca|instrucoes anteriores|prompt|suas regras|suas ferramentas|"
+                        r"modo desenvolvedor")
+_SPLIT = re.compile(r"[?;!]+|\s+e\s+(?=(?:o|a|os|as|qual|quais|que|quem|tambem|como|voces|vcs|ate|onde|quanto|horario|"
+                    r"endereco|telefone|preco|valor|frete)\b)|"
+                    r"\s+alem disso\s+")
 _EMAIL = r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
+_PHONE = r"\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}"
+_REFUSE_INJECTION = ("Isso eu não consigo fazer. Posso ajudar com instrumentos, preços, estoque, pedidos "
+                     "ou as políticas da loja. Como posso ajudar?")
+_REFUSE_OFF_TOPIC = ("Isso foge do que eu consigo ajudar por aqui: cuido de instrumentos musicais, preços, "
+                     "estoque, pedidos e políticas do Empório da Música. Posso ajudar com algo da loja?")
+_REPHRASE = ('Não entendi bem o pedido. Pode reformular? Eu sei: consultar preço e estoque de instrumentos '
+             '(ex.: "preço da Takamine GD20"), listar por categoria e faixa de preço, promoções, status '
+             'de pedido (preciso do número e do e-mail ou telefone), parcelamento, frete, prazo de '
+             'arrependimento, políticas da loja, horário, endereço e contato.')
+_GREETING = ("Olá! Sou o assistente do Empório da Música. Posso ajudar com instrumentos, preços, estoque, "
+             "pedidos e políticas da loja. O que você precisa?")
+_NOTE_OFF = "Sobre o restante da pergunta: isso foge do que eu consigo ajudar, só cuido da loja e dos instrumentos."
+_ORDER_ASK = ("Consigo sim! Pra consultar o pedido preciso do número dele e do e-mail ou telefone "
+              "cadastrado na compra, só pra confirmar que é você.")
 
 
 def _norm(text: str) -> str:
@@ -52,16 +97,16 @@ def _money(text: str) -> float | None:
     return float(m.group(1).replace(".", "")) if m else None
 
 
-def _price_cap(text: str) -> float | None:
-    """'até mil reais', 'até 1500', 'até R$ 800', 'até 2 mil'."""
-    if re.search(r"(?:ate|menos de)\s+mil\b", text):
+def _bound(text: str, words: str) -> float | None:
+    """Valor após uma expressão de limite ('ate mil', 'ate 2 mil', 'acima de R$ 800')."""
+    if re.search(rf"(?:{words})\s+mil\b", text):
         return 1000.0
-    m = re.search(r"(?:ate|menos de|no maximo)\s+(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(mil)?", text)
+    m = re.search(rf"(?:{words})\s+(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(mil)?", text)
     if not m:
         return None
-    value = float(m.group(1).replace(".", "").replace(",", ".")) if not m.group(2) \
-        else float(m.group(1).replace(",", ".")) * 1000
-    return value
+    if m.group(2):
+        return float(m.group(1).replace(",", ".")) * 1000
+    return float(m.group(1).replace(".", "").replace(",", "."))
 
 
 def _category_in(text: str) -> str | None:
@@ -71,22 +116,32 @@ def _category_in(text: str) -> str | None:
     return None
 
 
-def _call(i: int, name: str, args: dict) -> LLMResponse:
-    return LLMResponse(tool_calls=[ToolCall(id=f"mock_{i}", name=name, arguments=args)])
+def _is_accessory(words: list[str], text: str) -> bool:
+    if re.search(r"\d\s*cordas", text):
+        return False
+    return any(w in _ACCESSORY or w.rstrip("s") in _ACCESSORY for w in words)
+
+
+def _tool_calls(prefix: str, calls: list[tuple[str, dict]]) -> LLMResponse:
+    return LLMResponse(tool_calls=[ToolCall(id=f"{prefix}_{k}", name=name, arguments=args)
+                                   for k, (name, args) in enumerate(calls)])
 
 
 class MockLLM:
-    """Política de intenção por palavras-chave; ver docstring do módulo."""
+    """Política de intenção por regras; ver docstring do módulo."""
 
     def __init__(self) -> None:
         self.calls = 0
+        self._note = ""
 
     def chat(self, messages: list[Message], tools: list[dict]) -> LLMResponse:
         self.calls += 1
         last_user = max((i for i, m in enumerate(messages) if m["role"] == "user"), default=-1)
         results = [m for m in messages[last_user + 1:] if m["role"] == "tool"]
         if results:
-            return LLMResponse(text=self._compose(results))
+            text = self._compose(results)
+            note, self._note = self._note, ""
+            return LLMResponse(text=f"{text}\n\n{note}" if note else text)
         return self._route(messages)
 
     # --- decisão -----------------------------------------------------------
@@ -95,79 +150,97 @@ class MockLLM:
         raw = texts[-1] if texts else ""
         text = _norm(raw)
         history = [_norm(t) for t in texts[:-1]]
-        n = self.calls
-
-        if re.search(r"ignore|esqueca|instrucoes anteriores|prompt|suas regras|suas ferramentas", text):
-            return LLMResponse(text="Isso eu não consigo fazer. Posso ajudar com instrumentos, preços, "
-                                    "estoque, pedidos ou as políticas da loja. Como posso ajudar?")
-        if _OFF_TOPIC.search(text):
-            return LLMResponse(text="Isso foge do que eu consigo ajudar por aqui: cuido de instrumentos "
-                                    "musicais, preços, estoque, pedidos e políticas do Empório da Música. "
-                                    "Posso ajudar com algo da loja?")
-        order = self._order_call(text, history, n)
-        if order:
+        self._note = ""
+        if _INJECTION.search(text):
+            return LLMResponse(text=_REFUSE_INJECTION)
+        order = self._order_call(text, history, self.calls)
+        if order is not None:
             return order
-        words = set(re.findall(r"[a-z]+", text))
-        if any(w.startswith(a) for a in _ACCESSORY for w in words) and not re.search(r"\d\s*cordas", text):
-            return _call(n, "search_products", {"query": raw})
-        if any(w in text for w in _POLICY_WORDS):
-            return _call(n, "search_store_policies", {"query": raw})
-        for key, topic in _STORE_TOPICS:
-            if re.search(r"\b" + key, text):
-                return _call(n, "get_store_info", {"topic": topic})
-        if "promo" in text or "desconto" in text or "oferta" in text:
-            return _call(n, "get_promotions", {})
-        if "parcel" in text and _money(text):
-            return _call(n, "check_installments", {"amount": _money(text)})
-        if "frete" in text and _money(text):
-            return _call(n, "check_shipping", {"order_total": _money(text)})
-        received = re.search(r"(\d{4}-\d{2}-\d{2})", text)
-        if received and ("receb" in text or "chegou" in text):
-            return _call(n, "check_return_eligibility", {"received_date": received.group(1)})
-        if "parcel" in text or "frete" in text:
-            return _call(n, "search_store_policies", {"query": raw})
-        product = self._product_call(text, history, n)
-        if product:
-            return product
-        return LLMResponse(text="Sou o assistente virtual do Empório da Música e cuido de instrumentos "
-                                "musicais: catálogo, preços, estoque, pedidos e políticas da loja. "
-                                "Em que posso ajudar?")
+        calls: list[tuple[str, dict]] = []
+        off_topic = False
+        for seg in (s.strip() for s in _SPLIT.split(text) if s and s.strip()):
+            if _OFF_TOPIC.search(seg):
+                off_topic = True
+                continue
+            call = self._segment_call(seg, history)
+            if call and call not in calls:
+                calls.append(call)
+        if calls:
+            self._note = _NOTE_OFF if off_topic else ""
+            return _tool_calls(f"mock_{self.calls}", calls)
+        if off_topic:
+            return LLMResponse(text=_REFUSE_OFF_TOPIC)
+        if re.fullmatch(r"\W*(oi+|ola|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tchau)\W*", text):
+            return LLMResponse(text=_GREETING)
+        return LLMResponse(text=_REPHRASE)
 
     @staticmethod
     def _order_call(text: str, history: list[str], n: int) -> LLMResponse | None:
+        """Pedido: só chama a ferramenta com número E verificação digitados pelo cliente."""
         context = " ".join(history + [text])
         if "pedido" not in context or not re.search(r"pedido|#\d|@|\d{8,}", text):
             return None
-        oid = re.findall(r"(?:pedido|numero|#)\s*(?:n[o°º]\s*)?#?(\d{1,9})", context)
+        oid = re.findall(r"(?:pedido|compra|numero|#)\s*(?:n[o°º]\s*)?#?(\d{1,9})", context)
         email = re.findall(_EMAIL, context)
         phone = re.findall(_PHONE, context)
         if oid and (email or phone):
-            return _call(n, "get_order_status",
-                         {"order_id": int(oid[-1]), "verification": (email or phone)[-1]})
-        return LLMResponse(text="Consigo sim! Pra consultar o pedido preciso do número dele e do e-mail "
-                                "ou telefone cadastrado na compra, só pra confirmar que é você.")
+            return _tool_calls(f"mock_{n}", [("get_order_status",
+                                              {"order_id": int(oid[-1]), "verification": (email or phone)[-1]})])
+        return LLMResponse(text=_ORDER_ASK)
+
+    def _segment_call(self, text: str, history: list[str]) -> tuple[str, dict] | None:
+        words = re.findall(r"[a-z0-9]+", text)
+        if _is_accessory(words, text):
+            return "search_products", {"query": text}
+        if not _NOT_STORE.search(text):
+            for pattern, topic in _STORE_TOPICS:
+                if re.search(pattern, text):
+                    return "get_store_info", {"topic": topic}
+        if re.search(r"promo|oferta|liquidacao", text) or ("desconto" in text and "pix" not in text):
+            return "get_promotions", {}
+        money = _money(text)
+        if money and re.search(r"parcel|vezes|\d+x\b", text):
+            return "check_installments", {"amount": money}
+        if money and "frete" in text:
+            args: dict = {"order_total": money}
+            if "campo grande" in text:
+                args["in_metropolitan_region"] = True
+            return "check_shipping", args
+        received = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+        if received and re.search(r"receb|chegou|entreg", text):
+            return "check_return_eligibility", {"received_date": received.group(1)}
+        if _POLICY.search(text):
+            return "search_store_policies", {"query": text}
+        return self._product_call(text, words, history)
 
     @staticmethod
-    def _product_call(text: str, history: list[str], n: int) -> LLMResponse | None:
+    def _product_call(text: str, words: list[str], history: list[str]) -> tuple[str, dict] | None:
         category = _category_in(text)
-        cap = _price_cap(text)
-        if category is None and cap is not None:
+        cap = _bound(text, "ate|menos de|abaixo de|no maximo|por ate|de ate")
+        floor = _bound(text, "acima de|a partir de|mais de|no minimo")
+        has_price_bound = cap is not None or floor is not None
+        if category is None and has_price_bound:
             category = next((c for c in map(_category_in, reversed(history)) if c), None)
-        listing = re.search(r"\b(quais|opcoes|mostre|lista|tem)\b", text)
-        if cap is not None or (category and listing):
-            args: dict = {"available_only": True, "sort": "price_asc", "limit": 6}
-            if category:
-                args["category"] = category
-            if cap is not None:
-                args["price_max"] = cap
-            return _call(n, "search_products", args)
-        asks_product = re.search(r"preco|valor|quanto|custa|estoque|disponivel|\btem\b", text) \
-            or re.search(r"[a-z]+\s*[a-z]*\d+", text)
-        if asks_product:
-            words = [w for w in re.findall(r"[a-z0-9-]+", text) if w not in _FILLER]
-            if words:
-                return _call(n, "search_products", {"query": " ".join(words)})
-        return None
+        stripped = re.sub(r"(?:ate|menos de|abaixo de|no maximo|por ate|de ate|acima de|a partir de|mais de|"
+                          r"no minimo)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:mil)?", " ", text)
+        tokens = [w for w in re.findall(r"[a-z0-9]+", stripped) if w not in _FILLER and w not in _CATEGORIES]
+        asks = re.search(r"preco|valor|custa|quanto|sai|fica|estoque|disponivel|tem|vende|trabalha", text)
+        named = bool(tokens) and (asks or any(w in _BRANDS or re.search(r"[a-z]\d|\d[a-z]", w) for w in tokens))
+        args: dict = {}
+        if named:
+            args["query"] = " ".join(tokens)
+        elif category:
+            args.update({"available_only": True, "limit": 6,
+                         "sort": "price_desc" if "mais caro" in text else "price_asc"})
+        else:
+            return None
+        if category:
+            args["category"] = category
+        if cap is not None:
+            args["price_max"] = cap
+        if floor is not None:
+            args["price_min"] = floor
+        return "search_products", args
 
     # --- redação a partir dos resultados --------------------------------------
     def _compose(self, results: list[Message]) -> str:
@@ -238,6 +311,9 @@ class MockLLM:
         status = d.get("status")
         if status == "verification_required":
             return "Preciso do e-mail ou telefone cadastrado no pedido pra consultar."
+        if status == "locked":
+            return ("Muitas tentativas de verificação sem sucesso. Para consultar pedidos, fale com a loja "
+                    "pelo (67) 3341-4444.")
         if status != "found":
             return ("Não consegui confirmar esses dados para o pedido. Confere o número e o e-mail ou "
                     "telefone e tenta de novo?")
@@ -254,7 +330,7 @@ class MockLLM:
 
     @staticmethod
     def _policies(d: dict) -> str:
-        if d.get("status") != "found" or not d.get("results"):
+        if d.get("status") not in ("found", "ambiguous") or not d.get("results"):
             return ("Isso eu não encontrei nas políticas da loja. Melhor falar com um atendente pelo "
                     "(67) 3341-4444.")
         text = d["results"][0]["text"]
@@ -281,9 +357,10 @@ class MockLLM:
 
     @staticmethod
     def _return(d: dict) -> str:
+        days = d.get("window_days")
         labels = {"within_deadline": f"Está dentro do prazo de arrependimento (até {d.get('deadline_date')}).",
                   "borderline": "Está no limite do prazo; um atendente precisa confirmar.",
-                  "outside_deadline": "Passou do prazo de arrependimento de 7 dias.",
+                  "outside_deadline": f"Passou do prazo de arrependimento de {days} dias.",
                   "not_received_yet": "O prazo só começa a contar depois do recebimento."}
         return labels.get(d.get("status"), "Não consegui verificar o prazo; fale com um atendente.")
 
