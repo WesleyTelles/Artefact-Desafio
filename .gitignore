@@ -11,3 +11,7 @@ __pycache__/
 
 # logs de telemetria (EMPORIO_LOG_FILE)
 logs/
+
+# arquivos locais de ferramentas de desenvolvimento (nao fazem parte do produto)
+.claude/
+CLAUDE.md
