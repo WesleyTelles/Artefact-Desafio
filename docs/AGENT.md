@@ -20,6 +20,7 @@ Código em `app/llm/`, `app/agent/` e `app/interfaces/cli.py`. Execução: `pyth
 - Saída: e-mail e telefone completos de terceiros são mascarados (os contatos da loja são mantidos); linhas longas do prompt do sistema na resposta são bloqueadas.
 - Resultado de ferramenta e texto do manual são dados, nunca instruções (regra no prompt e nota em cada resultado). Ferramentas são somente leitura.
 - Memória só em RAM, janela de 20 mensagens, sem resultado bruto de ferramenta; `/limpar` apaga a memória (e zera o contador da sessão, ver acima).
+- Escopo da busca: `search_products` devolve `scope` (categorias pesquisadas ou `all`, preço, ordenação); "o mais barato da loja" exige `all_categories=true` explícito e o prompt proíbe generalizar o resultado de uma categoria. Pergunta de ranking sem universo definido é esclarecida; com listagem anterior, usa o contexto.
 - Conflitos de dados: `search_products` e `check_product_availability` devolvem `data_conflicts` e, com um único produto, `details`; o prompt manda não afirmar o ponto em conflito e encaminhar a um atendente (ver `docs/DATA_QUALITY.md`).
 
 ## Telemetria (log JSONL) e `--debug`

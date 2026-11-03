@@ -23,7 +23,7 @@ Rodada de 2026-11-02 (04:59 a 05:40 UTC), modelo `gemini-3.5-flash-lite` pelo me
 | Avaliações comportamentais (definição) | `tests/live/scenarios.py`, `harness.py` + `tests/test_scenario_checks.py` | Perguntas, resultado esperado e asserções semânticas calculadas sobre os dados; o controle negativo prova que cada asserção reprova respostas erradas (sem LLM) | Nenhum resultado de modelo: é a régua, não a medição |
 | Execuções com Gemini real | `scripts/run_scenarios.py`, `pytest -m live`, resultados em `docs/evaluation/` | Como o modelo configurado se comportou nestas 120 execuções | Generalização: amostra pequena, perguntas fixas, um modelo, uma data |
 
-`pytest -q` (sem `live`): 477 testes passam, 40 `live` são ignorados para não gastar cota.
+`pytest -q` (sem `live`): 506 testes passam, 46 `live` são ignorados para não gastar cota (40 cenários da avaliação mais 6 cenários de busca global, G01-G06, adicionados depois; ver abaixo).
 
 ## Metodologia
 
@@ -211,3 +211,18 @@ Sem `--repeat`/`--out`/`--resume`, o runner mantém o comportamento antigo (1 ex
 - Alguns critérios são permissivos: o detector de hedge (`_HEDGE_RE`) aceita palavras como "consta" ou "indica", R04/R06 aceitam a palavra "atendente", e R01 aprova um encaminhamento sem citar prazo. Por isso 118/120 não prova ausência de erros; é um limite inferior de verificação automática, não de qualidade.
 - A taxa ajustada inclui asserções corrigidas depois da execução (A11 e S14/R10) que não foram reexecutadas com o Gemini. A taxa bruta continua publicada ao lado.
 - Nenhuma execução foi refeita nesta etapa: as mudanças (orçamento por turno, resposta vazia) não alteram o conteúdo das respostas.
+
+## Cenários de busca global (G01-G06, 2026-11-03)
+
+Adicionados depois da avaliação de 120 execuções, após um teste manual em que "qual o instrumento mais barato da loja?" foi respondido só com violões. **Não entram nos números acima** (119/120, p95 etc.): foram executados uma vez cada com o Gemini real (`pytest -m live -k G0`): 6 passaram. Uma execução separada para capturar as respostas teve um 429 no G03 (indisponibilidade do provedor, não do agente) e passou na repetição. Uma execução por cenário não é evidência estatística.
+
+| ID | Pergunta | Esperado |
+|---|---|---|
+| G01 | Qual é o instrumento mais barato da loja? | busca sem categoria (`all_categories`), cita Shelby SU-21S, R$ 159,90 |
+| G02 | Quais são os cinco instrumentos mais baratos? | busca global; os cinco ukuleles mais baratos, em ordem |
+| G03 | Qual é o violão mais barato? | só violões: Tagima Memphis AC-39, R$ 429,90; sem generalizar |
+| G04 | Qual é o mais barato? | pede esclarecimento, sem consultar |
+| G05 | Quais instrumentos custam até R$ 300? | faixa em todas as categorias |
+| G06 | Quais violões vocês têm? / Qual deles é o mais barato? | usa a categoria do contexto |
+
+Limite: os critérios checam produto e preço esperados e a forma da chamada, não o texto livre inteiro; a frase de G03 "não generalizar" é verificada por regex.

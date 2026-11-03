@@ -43,7 +43,7 @@ Preencha `LLM_API_KEY` no `.env` com a chave de https://aistudio.google.com/apik
 | `python main.py` | conversa com o agente real (Gemini); exige `LLM_API_KEY` |
 | `python main.py --mock` | demonstração offline, sem chave e sem LLM (ver "Modo mock" na seção 12) |
 | `python main.py --debug` | mostra as ferramentas chamadas (e-mail e telefone mascarados) e a categoria técnica de falhas; combina com `--mock` |
-| `pytest` | 477 testes offline (sem rede nem chave); 40 testes `live` ficam de fora |
+| `pytest` | 506 testes offline (sem rede nem chave); 46 testes `live` ficam de fora |
 
 No chat: `/limpar` reinicia a conversa e `/sair` encerra.
 
@@ -72,7 +72,7 @@ app/
   agent/       prompt, memória de sessão, orquestrador
   interfaces/  CLI
 scripts/       runner de cenários com o LLM real, auditoria de produtos, verificador de publicação
-tests/         477 testes offline + 40 cenários reais (marcador live)
+tests/         506 testes offline + 46 cenários reais (marcador live)
 examples/      conversas reais com o modelo
 docs/          DATA, DATA_QUALITY, KNOWLEDGE, AGENT, QUALITY, EVALUATION, PUBLICACAO e pesquisa inicial
 ```
@@ -97,12 +97,14 @@ O prompt de sistema (`app/agent/prompts.py`) define: tom informal e profissional
 
 | Ferramenta | Uso |
 |---|---|
-| `search_products`, `check_product_availability` | catálogo, filtros de categoria e preço, estoque, detalhes e conflitos de dados do produto |
+| `search_products`, `check_product_availability` | catálogo, filtros de categoria e preço, estoque, detalhes e conflitos de dados do produto; `search_products` devolve `scope` (o que foi realmente pesquisado) |
 | `get_promotions` | promoções ativas (preço original, % e preço final) |
 | `get_order_status` | pedido; exige número e e-mail ou telefone do titular |
 | `get_store_info` | endereço, horário, contatos |
 | `search_store_policies` | busca no manual |
 | `check_installments`, `check_shipping`, `check_return_eligibility`, `check_pix_discount` | regras numéricas do manual em código |
+
+**Busca global x por categoria.** `search_products` sem nenhum critério é recusada. Para comparar a loja inteira ("o instrumento mais barato", "os cinco mais baratos") o modelo precisa pedir de forma explícita `all_categories=true` junto com `sort` (e `limit`); `all_categories` não combina com `category`. Faixa de preço sem categoria também varre todas as categorias. Toda resposta `found` ou `ambiguous` traz `scope` (categorias pesquisadas ou `"all"`, faixa de preço, ordenação) e `truncated`/`total_matches`; o prompt só deixa o agente chamar algo de "o mais barato da loja" quando `scope.categories` é `"all"`. A ordenação é por preço e, em empate, por `product_id`. Pergunta como "qual é o mais barato?" sem categoria e sem listagem anterior deve ser esclarecida pelo agente; com listagem anterior ele responde com base nela. O comportamento do LLM nesses casos é instrução de prompt, verificada por 6 cenários reais (G01-G06, uma execução cada); o que é garantido em código é o `scope`, a recusa sem critério e a ordenação.
 
 `registry.execute` valida os argumentos e nunca levanta exceção. Falhas viram `{"status": "error"}`. Argumentos inválidos vindos do LLM (JSON malformado, tipo errado, campo ausente ou extra, ferramenta inexistente) não são executados: voltam ao modelo como erro estruturado, com uma correção permitida por ferramenta no turno; persistindo, o cliente recebe uma resposta fixa pedindo para reformular.
 
@@ -221,7 +223,7 @@ Para ler, uma linha por turno: `python -c "import json,sys; [print(json.loads(l)
 pytest
 ```
 
-Roda 477 testes sem rede nem chave (os 40 testes `live` ficam de fora de propósito). A suíte cobre carga e validação de dados, ferramentas, regras do manual, busca, orquestrador (guardrails, retry, JSON inválido, falha de ferramenta), CLI, telemetria, mock e a régua das asserções dos cenários reais (controle negativo: cada asserção reprova respostas erradas). Como boa parte depende dos dados, só passam todos com os arquivos de "Dados necessários" no lugar. Cenários com o LLM real (usam a cota da chave):
+Roda 506 testes sem rede nem chave (os 46 testes `live` ficam de fora de propósito). A suíte cobre carga e validação de dados, ferramentas, regras do manual, busca, orquestrador (guardrails, retry, JSON inválido, falha de ferramenta), CLI, telemetria, mock e a régua das asserções dos cenários reais (controle negativo: cada asserção reprova respostas erradas). Como boa parte depende dos dados, só passam todos com os arquivos de "Dados necessários" no lugar. Cenários com o LLM real (usam a cota da chave):
 
 ```bash
 pytest -m live
@@ -282,6 +284,7 @@ A rodada anterior (2026-11-01: 16 cenários e 12 ataques, uma execução cada) e
 - Sem persistência de conversa entre execuções, sem streaming, sem interface web e sem limite de taxa por usuário.
 - O repositório depende de material da Artefact (CSVs e manual) cuja redistribuição não foi autorizada; ver docs/PUBLICACAO.md.
 - Pergunta em inglês é respondida em português.
+- A busca global lista no máximo 20 produtos por chamada (catálogo atual: 65). "O mais barato" usa `available_only` quando o cliente quer comprar; isso é decisão do modelo guiada pelo prompt, não regra em código. Os cenários G01-G06 foram executados uma vez cada com o Gemini real, fora das 120 execuções da avaliação.
 
 ## 18. O que faria com mais tempo
 

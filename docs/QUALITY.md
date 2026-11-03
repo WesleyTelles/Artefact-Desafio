@@ -1,6 +1,6 @@
 # Qualidade, segurança e revisão independente
 
-> **Fonte dos números atuais: [EVALUATION.md](EVALUATION.md)** (2026-11-02: 40 cenários × 3 execuções = 120 execuções com o Gemini real, 119/120 bruto e 118/120 ajustado, com ressalva estatística). Este arquivo preserva a **rodada anterior** (2026-11-01: 16 cenários e 12 ataques, uma execução cada) e o registro das falhas que o processo encontrou e corrigiu. Os números abaixo são dessa rodada e não foram atualizados. A suíte offline tem hoje 477 testes (40 `live` ficam de fora).
+> **Fonte dos números atuais: [EVALUATION.md](EVALUATION.md)** (2026-11-02: 40 cenários × 3 execuções = 120 execuções com o Gemini real, 119/120 bruto e 118/120 ajustado, com ressalva estatística). Este arquivo preserva a **rodada anterior** (2026-11-01: 16 cenários e 12 ataques, uma execução cada) e o registro das falhas que o processo encontrou e corrigiu. Os números abaixo são dessa rodada e não foram atualizados. A suíte offline tem hoje 506 testes (46 `live` ficam de fora).
 
 Validação da rodada anterior, feita em 2026-11-01 com o LLM real (Gemini, modelo `gemini-3.5-flash-lite`, pelo mesmo cliente do app), sobre os dados reais da loja. Transcrições em `docs/quality/transcripts/` (uma por cenário; e-mails e telefones de clientes mascarados, conferido por teste automático).
 
