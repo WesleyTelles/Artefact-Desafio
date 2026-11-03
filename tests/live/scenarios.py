@@ -97,6 +97,23 @@ def used_tool(*names: str) -> Check:
     return check
 
 
+def global_search(t: TurnRecord) -> str | None:
+    """Pergunta sobre a loja inteira: precisa de uma busca sem categoria (all_categories ou só faixa de preço)."""
+    found = [c for c in t.calls if c[0] == "search_products" and not c[1].get("category")
+             and (c[1].get("all_categories") or c[1].get("price_max") is not None)]
+    return None if found else "não fez busca global (sem categoria)"
+
+
+def cheapest_is_ukulele(t: TurnRecord) -> str | None:
+    return None if has_any(t.text, "Shelby SU-21S", "159,90") else "não citou o mais barato real (Shelby SU-21S, R$ 159,90)"
+
+
+def asks_scope(t: TurnRecord) -> str | None:
+    if t.calls and any(c[0] == "search_products" for c in t.calls):
+        return "buscou por conta própria uma pergunta sem universo definido"
+    return None if "?" in t.text else "não pediu esclarecimento"
+
+
 def no_leak(t: TurnRecord) -> str | None:
     hit = [m for m in LEAK_MARKERS if m.lower() in t.text.lower()]
     return f"vazou trecho do prompt/ferramentas: {hit}" if hit else None
@@ -481,6 +498,24 @@ def _scenarios() -> list[Scenario]:
                   no_unknown_prices], group="rev"),
         Scenario("R10", "Contexto multi-turno (variante)", ["Vocês têm violões?", "e até mil reais?"],
                  [used_tool("search_products"), search_with_cap, violoes_check, no_unknown_prices], group="rev"),
+        Scenario("G01", "Mais barato da loja inteira", ["Qual é o instrumento mais barato da loja?"],
+                 [used_tool("search_products"), global_search, cheapest_is_ukulele, no_unknown_prices], group="glob"),
+        Scenario("G02", "Cinco mais baratos da loja", ["Quais são os cinco instrumentos mais baratos?"],
+                 [used_tool("search_products"), global_search,
+                  contains_all("Shelby SU-21S", "Kalani KAL-300S", "Kala KA-15S", "Ohana SK-10", "Kala KA-C"),
+                  no_unknown_prices], group="glob"),
+        Scenario("G03", "Violão mais barato (só a categoria)", ["Qual é o violão mais barato?"],
+                 [used_tool("search_products"), contains("Tagima Memphis AC-39", "429,90", label="violão mais barato"),
+                  lacks_regex(r"(mais barato|menor preco)[^.]*(da loja|de toda a loja|de todos)", "generalizou para a loja"),
+                  no_unknown_prices], group="glob"),
+        Scenario("G04", "Mais barato sem universo definido", ["Qual é o mais barato?"],
+                 [asks_scope], group="glob"),
+        Scenario("G05", "Faixa de preço sem categoria", ["Quais instrumentos custam até R$ 300?"],
+                 [used_tool("search_products"), global_search,
+                  contains_all("Shelby SU-21S", "Ohana SK-10"), no_unknown_prices], group="glob"),
+        Scenario("G06", "Contexto: mais barato após listar violões", ["Quais violões vocês têm?", "Qual deles é o mais barato?"],
+                 [used_tool("search_products"), contains("Tagima Memphis AC-39", "429,90", label="mais barato da lista"),
+                  no_unknown_prices], group="glob"),
     ]
 
 
@@ -529,6 +564,12 @@ _META: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
     "R08": ("Informa (67) 3341-4444 e/ou 3321-4500 sem máscara e sem outro número", ()),
     "R09": ("Preço do Yamaha C40 (R$ 599,90) e domingo fechado", (_ANY_PRODUCT,)),
     "R10": ("2º turno 'e até mil reais?' mantém violões com teto R$ 1.000", (("search_products",),)),
+    "G01": ("Busca global (all_categories, sem categoria); cita Shelby SU-21S, R$ 159,90", (("search_products",),)),
+    "G02": ("Busca global com 5 resultados: os 5 ukuleles mais baratos, em ordem", (("search_products",),)),
+    "G03": ("Só violões: Tagima Memphis AC-39, R$ 429,90; sem generalizar para a loja", (("search_products",),)),
+    "G04": ("Sem contexto: pede esclarecimento (loja inteira ou categoria) e não consulta", ()),
+    "G05": ("Faixa até R$ 300 em todas as categorias (sem categoria escolhida)", (("search_products",),)),
+    "G06": ("Mais barato da listagem de violões anterior (Tagima, R$ 429,90)", (("search_products",),)),
 }
 
 

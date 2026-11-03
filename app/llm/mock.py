@@ -54,6 +54,13 @@ apenas dele dela deles desse dessa esse essa isso aquele aquela ate abaixo acima
 _STORE_TOPICS = ((r"horario|que horas|\babre\b|\bfecha\b|aberto|funcionamento|sabado|domingo|feriado", "hours"),
                  (r"endereco|onde fica|localizacao|como chegar|onde voces ficam", "address"),
                  (r"telefone|whatsapp|zap|contato|ligar", "contacts"))
+_GENERIC = {"instrumento", "instrumentos", "produto", "produtos", "item", "itens"}
+_RANK = re.compile(r"(mais barat|mais car|menor preco|maior preco|mais em conta)")
+_WHOLE_STORE = re.compile(r"(loja|catalogo|instrumentos?|todos|todas|geral|inteir[ao])")
+_COUNTS = {"dois": 2, "duas": 2, "tres": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7, "oito": 8,
+           "nove": 9, "dez": 10}
+_ASK_SCOPE = ("Mais barato entre o quê? Posso comparar a loja inteira ou uma categoria só (violão, "
+              "guitarra, ukulele...). Qual você prefere?")
 _FOLLOW_UP = re.compile(r"\b(mais barato|mais caro|menor preco|maior preco|o mais em conta)\b")
 _NOT_STORE = re.compile(r"entreg|devol|troca|garantia|pedido")
 _POLICY = re.compile(
@@ -121,6 +128,20 @@ def _category_in(text: str) -> str | None:
     return None
 
 
+def _count_in(text: str) -> int | None:
+    """Quantidade pedida ('os 5 mais baratos', 'cinco instrumentos mais baratos')."""
+    m = re.search(r"(?:^|\s)(\d{1,2})\s+(?:\w+\s+)?mais (?:barat|car)", text)
+    if m:
+        return max(1, min(int(m.group(1)), 20))
+    m = re.search(r"(dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+(?:\w+\s+)?mais (?:barat|car)", text)
+    return _COUNTS[m.group(1)] if m else None
+
+
+def _names_product(text: str) -> bool:
+    """Há marca ou modelo na frase (então o pedido é por produto, não por ranking)."""
+    return any(w in _BRANDS or re.search(r"[a-z]\d|\d[a-z]", w) for w in re.findall(r"[a-z0-9]+", text))
+
+
 def _is_accessory(words: list[str], text: str) -> bool:
     if re.search(r"\d\s*cordas", text):
         return False
@@ -165,6 +186,8 @@ class MockLLM:
         follow = self._follow_up(text)
         if follow is not None:
             return follow
+        if _RANK.search(text) and not _category_in(text) and not _WHOLE_STORE.search(text):
+            return LLMResponse(text=_ASK_SCOPE)  # sem contexto que delimite o universo: perguntar
         order = self._order_call(text, history, self.calls)
         if order is not None:
             return order
@@ -190,6 +213,8 @@ class MockLLM:
         """"Qual deles é o mais barato/caro?" sobre a última listagem; None se não se aplica."""
         if not self._last_products or _category_in(text) or not _FOLLOW_UP.search(text):
             return None
+        if _WHOLE_STORE.search(text) and not re.search(r"deles|delas|desses|dessas|entre", text):
+            return None  # pergunta sobre a loja inteira: não responder com a listagem anterior
         cheapest = not re.search(r"mais caro|maior preco", text)
 
         def price(p: dict) -> Decimal:
@@ -250,17 +275,28 @@ class MockLLM:
         has_price_bound = cap is not None or floor is not None
         if category is None and has_price_bound:
             category = next((c for c in map(_category_in, reversed(history)) if c), None)
+        if category is None and _RANK.search(text) and not _names_product(text):
+            plural = re.search(r"mais (?:baratos|caros)", text)
+            return "search_products", {"all_categories": True, "available_only": True,
+                                       "limit": _count_in(text) or (5 if plural else 1),
+                                       "sort": "price_desc" if re.search(r"mais car|maior preco", text)
+                                       else "price_asc"}
         stripped = re.sub(r"(?:ate|menos de|abaixo de|no maximo|por ate|de ate|acima de|a partir de|mais de|"
                           r"no minimo)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:mil)?", " ", text)
-        tokens = [w for w in re.findall(r"[a-z0-9]+", stripped) if w not in _FILLER and w not in _CATEGORIES]
+        tokens = [w for w in re.findall(r"[a-z0-9]+", stripped)
+                  if w not in _FILLER and w not in _CATEGORIES and w not in _GENERIC]
         asks = re.search(r"preco|valor|custa|quanto|sai\b|fica\b|estoque|disponivel|\btem\b|vende|trabalha", text)
         named = bool(tokens) and (asks or any(w in _BRANDS or re.search(r"[a-z]\d|\d[a-z]", w) for w in tokens))
         args: dict = {}
         if named:
             args["query"] = " ".join(tokens)
-        elif category:
+        elif category or has_price_bound:
             args.update({"available_only": True, "limit": 6,
                          "sort": "price_desc" if "mais caro" in text else "price_asc"})
+            if _RANK.search(text):
+                args["limit"] = _count_in(text) or (6 if re.search(r"mais (?:baratos|caros)", text) else 1)
+            if not category:
+                args["all_categories"] = True  # faixa de preço sem categoria nem contexto: loja inteira
         else:
             return None
         if category:
@@ -319,10 +355,20 @@ class MockLLM:
             self._last_products = list(items[:6])  # o que foi exibido vira contexto do próximo turno
         if not items:
             return "Não encontrei opções com esses critérios."
+        scope = d.get("scope") or {}
+        if len(items) == 1 and status == "found" and scope.get("sort") and d.get("truncated"):
+            word = "mais barato" if scope["sort"] == "price_asc" else "mais caro"
+            where = ("da loja (todas as categorias)" if scope.get("categories") == "all"
+                     else f"em {', '.join(scope['categories'])}")
+            return f"O {word} {where} é: {self._line(items[0])}."
         if len(items) == 1 and status == "found":
             return f"Encontrei: {self._line(items[0])}."
         head = "Encontrei mais de uma opção, qual delas você quer?" if status == "ambiguous" \
             else "Olha o que tenho:"
+        if status == "found" and scope.get("categories") == "all" and scope.get("sort"):
+            head = "Olha o que tenho, em todas as categorias, ordenado por preço:"
+        elif status == "found" and scope.get("categories") not in (None, "all"):
+            head = f"Olha o que tenho em {', '.join(scope['categories'])}:"
         shown = items[:6]
         more = (f"\n(Mostrando {len(shown)} de {d['total_matches']}.)"
                 if d.get("total_matches", 0) > len(shown) else "")

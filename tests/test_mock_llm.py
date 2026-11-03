@@ -137,9 +137,12 @@ def test_contexto_e_o_horario_e_acessivel_sem_historico():
     assert tools_of(reply) == ["get_store_info"]
 
 
-def test_teto_sem_categoria_nem_contexto_pede_reformular():
+def test_teto_sem_categoria_nem_contexto_consulta_todas_as_categorias():
+    # antes pedia para reformular; agora a faixa de preço sem categoria vale para a loja inteira (all_categories)
     reply, _ = run("até mil reais")
-    assert reply.trace == [] and "reformular" in reply.text
+    (call,) = reply.trace
+    assert call["name"] == "search_products" and call["arguments"]["all_categories"] is True
+    assert call["arguments"]["price_max"] == 1000 and "todas as categorias" in reply.text
 
 
 def test_pedido_sem_numero_ou_verificacao_nao_chama_ferramenta():
