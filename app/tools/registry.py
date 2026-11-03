@@ -39,15 +39,16 @@ def _schema(properties: dict, required: list[str] | None = None) -> dict:
 TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("search_products",
          "Busca produtos do catálogo por texto (nome/marca/modelo), categoria e faixa de preço. "
-         "Retorna status found, not_found ou ambiguous. Preço e estoque vêm sempre do sistema.",
+         "Retorna status found, not_found ou ambiguous, e `scope` com o que foi realmente pesquisado (categorias, preço, ordenação). Preço e estoque vêm sempre do sistema.",
          _schema({
              "query": {"type": "string", "description": "Texto livre: nome, marca, modelo ou tipo (ex.: 'violão')."},
              "category": {"type": "string", "description": "Categoria ou sinônimo (violão, guitarra, baixo, bateria, teclado, ukulele...)."},
              "price_max": {"type": "number", "minimum": 0, "description": "Preço máximo em reais."},
              "price_min": {"type": "number", "minimum": 0, "description": "Preço mínimo em reais."},
              "available_only": {"type": "boolean", "description": "Só produtos ativos com estoque."},
-             "sort": {"type": "string", "enum": ["price_asc", "price_desc"]},
+             "sort": {"type": "string", "enum": ["price_asc", "price_desc"], "description": "Ordena por preço (empate por product_id)."},
              "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+             "all_categories": {"type": "boolean", "description": "true = comparar o catálogo inteiro, sem escolher categoria (ex.: 'o instrumento mais barato da loja': all_categories=true, sort=price_asc, limit=1). Exige sort quando não há query nem preço; não combine com category."},
          }),
          search_products),
     Tool("check_product_availability",

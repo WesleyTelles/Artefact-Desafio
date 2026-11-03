@@ -207,9 +207,13 @@ def _description_match(product: Product, terms: list[str]) -> bool:
 
 def search_products(query: str | None = None, category: str | None = None,
                     price_max=None, price_min=None, available_only: bool = False,
-                    sort: str | None = None, limit: int = MAX_RESULTS,
+                    sort: str | None = None, limit: int = MAX_RESULTS, all_categories: bool = False,
                     *, store: DataStore | None = None) -> dict:
-    """Busca por texto/categoria/preço. Retorna found | not_found | ambiguous."""
+    """Busca por texto/categoria/preço. Retorna found | not_found | ambiguous.
+
+    Sem nenhum critério a busca é recusada. A listagem do catálogo inteiro só acontece com
+    `all_categories=True` (e `sort`), pedido de forma explícita; `category` e `all_categories` se excluem.
+    """
     store = store or get_store()
     pmax, pmin = _to_decimal(price_max, "price_max"), _to_decimal(price_min, "price_min")
     if pmax is not None and pmin is not None and pmin > pmax:
@@ -219,6 +223,10 @@ def search_products(query: str | None = None, category: str | None = None,
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ToolInputError("limit deve ser inteiro positivo")
     limit = min(limit, MAX_RESULTS)
+    if not isinstance(all_categories, bool):
+        raise ToolInputError("all_categories deve ser verdadeiro ou falso")
+    if all_categories and category:
+        raise ToolInputError("all_categories e category são excludentes: escolha uma categoria OU todas")
 
     query = (query or "").strip()
     if query and _is_accessory_query(query):
@@ -236,10 +244,15 @@ def search_products(query: str | None = None, category: str | None = None,
                     "valid_categories": [c.name for c in store.categories.values()]}
         cats = {cid}
     if not cats and not terms and pmax is None and pmin is None:
-        raise ToolInputError("Informe ao menos um critério: query, category ou faixa de preço")
+        if not (all_categories and sort):
+            raise ToolInputError("Informe ao menos um critério: query, category ou faixa de preço. Para "
+                                 "comparar o catálogo inteiro (ex.: o mais barato da loja) use "
+                                 "all_categories=true junto com sort")
     if len(cats) > 1:
         return {"status": "ambiguous", "reason": "multiple_categories",
-                "categories": sorted(store.categories[c].name for c in cats)}
+                "categories": sorted(store.categories[c].name for c in cats),
+                "hint": "Para comparar todas as categorias, repita a busca com all_categories=true e sort; "
+                        "se o cliente quis uma categoria só, pergunte qual."}
 
     pool = list(store.products.values())
     if cats:
@@ -274,18 +287,22 @@ def search_products(query: str | None = None, category: str | None = None,
     else:
         pool.sort(key=lambda p: p.product_id)
 
+    scope = {"categories": sorted(store.categories[c].name for c in cats) if cats else "all",
+             "price_min": money_str(pmin) if pmin is not None else None,
+             "price_max": money_str(pmax) if pmax is not None else None,
+             "available_only": available_only, "sort": sort or ("price_asc" if pmax is not None or pmin is not None else None)}
     matched_on = match_scope if terms else None
     if terms and len(pool) > 1:
         candidates = [product_summary(store, p, matched_on=matched_on, query_terms=terms)
                       for p in pool[:MAX_CANDIDATES]]
         return _with_notes({"status": "ambiguous", "reason": "multiple_matches", "query": query,
                             "match_scope": match_scope, "total_matches": len(pool),
-                            "candidates": candidates}, candidates)
+                            "scope": scope, "candidates": candidates}, candidates)
     shown = pool[:limit]
     products = [product_summary(store, p, detail=len(shown) == 1, matched_on=matched_on,
                                 query_terms=terms) for p in shown]
     return _with_notes({"status": "found", "match_scope": match_scope, "total_matches": len(pool),
-                        "truncated": len(pool) > len(shown), "products": products}, products)
+                        "scope": scope, "truncated": len(pool) > len(shown), "products": products}, products)
 
 
 def check_product_availability(product_id: int | None = None, name: str | None = None,
